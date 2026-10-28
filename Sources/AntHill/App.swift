@@ -1,0 +1,88 @@
+import AppKit
+import SwiftUI
+
+// AntHill
+//   AntHill                      the app
+//   APP_STORE=<file> AntHill     test run: settings go to a separate defaults suite
+//   APP_SNAPSHOT=<dir> AntHill   save a PNG of every sidebar page and Settings tab in light and dark mode, then quit
+//   APP_SEED=1 AntHill           fill the YT-Music queue with sample items (tools/snap.sh)
+//   AntHill --selftest           run the self-test on a /tmp store and quit with 0 or 1 (tools/selftest.sh)
+//   APP_ACCENT=<id> AntHill      run with another accent from Theme.all (UI/Theme.swift)
+//   APP_GRID=1 AntHill           draw the 8 pt grid and the layout probes over the window
+
+@main
+struct AntHillApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @State private var model = AppModel()
+
+    var body: some Scene {
+        Window("AntHill", id: "main") {
+            ContentView()
+                .environment(model)
+                .onAppear { AppDelegate.model = model }
+                .themed()
+                .overlay { if GridOverlay.enabled { GridOverlay() } }
+                .frame(minWidth: 760, minHeight: 480)
+        }
+        .defaultSize(width: 1100, height: 720)
+        // Closing to the menu bar must not make the next launch start without a window.
+        .defaultLaunchBehavior(.presented)
+        .windowToolbarStyle(.unified)
+        .commands {
+            SidebarCommands()
+            ToolbarCommands()
+            CommandMenu("YT-Music") {
+                Button("Clear Finished") { model.music.clearFinished() }
+                    .keyboardShortcut("k", modifiers: [.command, .shift])
+                    .disabled(!model.music.hasFinished)
+                Button("Change Download Folder…") { model.music.chooseFolder() }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
+        }
+
+        // The menu bar icon stays while the window is closed; Quit lives here.
+        MenuBarExtra("AntHill", systemImage: "ant.fill") {
+            MenuBarContent()
+                .environment(model)
+        }
+
+        Settings {
+            SettingsView()
+                .environment(model)
+                .themed()
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the app so quit can stop running downloads.
+    static var model: AppModel?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Started from a terminal, the process is not a foreground app yet.
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { _ in
+            // The closing window is still visible now; look on the next turn of the run loop.
+            Task { @MainActor in self.leaveDockIfNoWindow() }
+        }
+    }
+
+    /// Closing the window keeps the app running in the menu bar.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// With no window left, the app leaves the Dock and lives only in the menu bar.
+    /// Checked after a window closes, never while one is opening, or the new window loses focus.
+    private func leaveDockIfNoWindow() {
+        if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
+    /// The self-test's result becomes the exit code, after a normal quit.
+    func applicationWillTerminate(_ notification: Notification) {
+        Self.model?.music.stopAll()
+        if SelfTest.requested { exit(SelfTest.exitCode) }
+    }
+}

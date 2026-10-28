@@ -1,0 +1,50 @@
+import Foundation
+
+/// The modules in the sidebar. Snapshot mode walks through every case.
+/// A new module: add a case here and its view in `ModuleView`.
+enum Module: String, CaseIterable, Identifiable {
+    case ytMusic = "yt-music"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ytMusic: "YT-Music"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .ytMusic: "music.note"
+        }
+    }
+}
+
+/// App-wide state that menus, toolbars, and views share.
+@Observable
+final class AppModel {
+    /// Test and snapshot runs keep their settings away from the real ones.
+    static let defaults = Store.isOverridden ? UserDefaults(suiteName: "com.sebkrupa.anthill.test")! : .standard
+
+    var sidebar: Module? = Module(rawValue: defaults.string(forKey: "sidebar") ?? "") ?? .ytMusic {
+        didSet { Self.defaults.set(sidebar?.rawValue, forKey: "sidebar") }
+    }
+    /// Settings reopens on the last tab.
+    var settingsTab: SettingsTab = SettingsTab(rawValue: defaults.string(forKey: "settings.tab") ?? "") ?? .general {
+        didSet { Self.defaults.set(settingsTab.rawValue, forKey: "settings.tab") }
+    }
+    /// Modules left out of the menu bar. Stored as the hidden ones, so new modules show by default.
+    var menuBarHidden: Set<String> = Set(defaults.stringArray(forKey: "menuBar.hidden") ?? []) {
+        didSet { Self.defaults.set(Array(menuBarHidden), forKey: "menuBar.hidden") }
+    }
+    let music = MusicQueue(defaults: defaults)
+
+    var menuBarModules: [Module] { Module.allCases.filter { !menuBarHidden.contains($0.rawValue) } }
+}
+
+/// Test, snapshot, and self-test runs set APP_STORE to a path in /tmp.
+enum Store {
+    static var isOverridden: Bool {
+        !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty
+    }
+}

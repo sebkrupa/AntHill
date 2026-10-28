@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g fill="none" stroke="#5B3216" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512 250 C 500 330, 450 380, 470 450 C 490 520, 570 540, 560 620 C 550 700, 500 730, 500 770"/>
+    <path d="M466 430 C 420 440, 390 470, 352 480"/>
+    <path d="M520 520 C 580 500, 620 470, 668 456"/>
+    <path d="M556 640 C 610 660, 650 680, 694 690"/>
+    <path d="M500 770 C 450 780, 400 790, 352 790"/>
+  </g>
+  <g fill="#5B3216">
+    <ellipse cx="512" cy="248" rx="34" ry="16"/>
+    <ellipse cx="330" cy="482" rx="78" ry="44"/>
+    <ellipse cx="690" cy="452" rx="66" ry="38"/>
+    <ellipse cx="716" cy="694" rx="84" ry="46"/>
+    <ellipse cx="342" cy="790" rx="92" ry="48"/>
+  </g>
+  <!-- Eggs in the nursery chamber. -->
+  <g fill="#FFF4DE">
+    <ellipse cx="310" cy="796" rx="16" ry="11"/>
+    <ellipse cx="346" cy="800" rx="16" ry="11"/>
+    <ellipse cx="380" cy="794" rx="16" ry="11"/>
+    <ellipse cx="328" cy="776" rx="15" ry="10"/>
+    <ellipse cx="362" cy="776" rx="15" ry="10"/>
+  </g>
+</svg>

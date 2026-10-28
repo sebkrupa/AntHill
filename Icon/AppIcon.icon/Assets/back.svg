@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The mound, cut open to show the nest inside. -->
+  <path d="M96 1024 L96 860 C 210 560, 360 250, 512 236 C 664 250, 814 560, 928 860 L928 1024 Z" fill="#E9B46C"/>
+  <path d="M0 1024 L0 860 L1024 860 L1024 1024 Z" fill="#B97A3E"/>
+</svg>
