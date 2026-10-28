@@ -1,8 +1,9 @@
 # AntHill
 
 A native macOS app in SwiftUI that puts scripts and automations behind
-simple pages, one module per sidebar row. No database: the YT-Music queue
-lives in memory, settings in UserDefaults.
+simple pages, one module per sidebar row. No database: the YT-Music history
+(every download and its log, kept until the person removes it) is a JSON file
+in ~/Library/Application Support/AntHill/history.json, settings in UserDefaults.
 
 ## Add a module
 

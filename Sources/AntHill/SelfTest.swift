@@ -74,6 +74,19 @@ enum SelfTest {
             queue.browser = oldBrowser
             queue.remove(blocked)
 
+            let broken = DownloadItem(url: "https://youtu.be/broken")
+            broken.status = .failed("Video unavailable")
+            broken.log = ["$ yt-dlp https://youtu.be/broken", "ERROR: Video unavailable"]
+            queue.insertSample(broken)
+            queue.save()
+            let reopened = MusicQueue(defaults: AppModel.defaults, history: Store.history)
+            let back = reopened.items.first { $0.url == broken.url }
+            check("the history and its logs survive a restart, failed songs ready to retry",
+                  reopened.items.map(\.url) == queue.items.map(\.url) && back?.failed == true && back?.log == broken.log)
+            queue.remove(broken)
+            check("removing an item takes it out of the saved history",
+                  !MusicQueue(defaults: AppModel.defaults, history: Store.history).items.contains { $0.url == broken.url })
+
             model.menuBarHidden = []
             check("every module is in the menu bar by default", model.menuBarModules == Module.allCases)
             model.menuBarHidden = [Module.ytMusic.rawValue]

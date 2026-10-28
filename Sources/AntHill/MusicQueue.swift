@@ -4,7 +4,7 @@ import AntHillKit
 /// One link in the YT-Music queue.
 @Observable
 final class DownloadItem: Identifiable {
-    enum Status: Equatable {
+    enum Status: Equatable, Codable {
         case waiting, downloading, paused, done
         case failed(String)
     }
@@ -63,15 +63,65 @@ final class MusicQueue {
     /// Self-test turns this off so no real download starts.
     var startsDownloads = true
     private let defaults: UserDefaults
+    /// Where the history is saved; nil keeps it in memory only.
+    private let history: URL?
 
     var folder: String {
         didSet { defaults.set(folder, forKey: "music.folder") }
     }
 
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, history: URL? = nil) {
         self.defaults = defaults
+        self.history = history
         folder = defaults.string(forKey: "music.folder") ?? Self.defaultFolder
         browser = defaults.string(forKey: "music.browser").flatMap(YTMusic.Browser.init)
+        if let history, let data = try? Data(contentsOf: history),
+           let saved = try? JSONDecoder().decode([Saved].self, from: data) {
+            items = saved.map(\.item)
+        }
+        // Test runs never start yt-dlp on their own.
+        if !Store.isOverridden { startNext() }
+    }
+
+    /// One history entry on disk.
+    private struct Saved: Codable {
+        var url: String
+        var title: String?
+        var status: DownloadItem.Status
+        var progress: Double
+        var file: String?
+        var issue: YTMusic.Issue?
+        var stage: YTMusic.Stage
+        var log: [String]
+
+        init(_ item: DownloadItem) {
+            url = item.url; title = item.title; status = item.status; progress = item.progress
+            file = item.file; issue = item.issue; stage = item.stage; log = item.log
+        }
+
+        var item: DownloadItem {
+            let item = DownloadItem(url: url)
+            item.title = title
+            // A download cut off by quit continues; yt-dlp picks up its partial file.
+            item.status = status == .downloading ? .waiting : status
+            item.progress = progress
+            item.file = file
+            item.issue = issue
+            item.stage = stage
+            item.log = log
+            return item
+        }
+    }
+
+    /// Writes the history. Called after every change to the list and on quit.
+    func save() {
+        guard let history else { return }
+        do {
+            try FileManager.default.createDirectory(at: history.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(items.map(Saved.init)).write(to: history, options: .atomic)
+        } catch {
+            print("AntHill: could not save the history: \(error.localizedDescription)")
+        }
     }
 
     /// The browser whose YouTube sign-in yt-dlp borrows; nil downloads signed out.
@@ -221,10 +271,14 @@ final class MusicQueue {
 
     func clearFinished() {
         items.removeAll { $0.status == .done }
+        save()
     }
 
-    /// Stops every running yt-dlp, for quit.
-    func stopAll() { items.forEach(stop) }
+    /// Stops every running yt-dlp and saves the history, for quit.
+    func stopAll() {
+        save()
+        items.forEach(stop)
+    }
 
     /// Finder with the file selected; the folder when the file is gone (Music.app moves it).
     func reveal(_ item: DownloadItem) {
@@ -253,7 +307,9 @@ final class MusicQueue {
         process.terminate()
     }
 
+    /// Every change to the list ends here, so this is where the history is saved.
     private func startNext() {
+        save()
         guard startsDownloads, !items.contains(where: { $0.status == .downloading }),
               let next = items.first(where: { $0.status == .waiting }) else { return }
         start(next)

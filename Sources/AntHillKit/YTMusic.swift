@@ -14,7 +14,7 @@ public enum YTMusic {
     }
 
     /// The stages of one download, in the order yt-dlp runs them.
-    public enum Stage: Int, CaseIterable, Comparable, Sendable {
+    public enum Stage: Int, CaseIterable, Comparable, Codable, Sendable {
         case start, info, download, convert, tags, cover, move
 
         public var title: String {
@@ -130,7 +130,7 @@ public enum YTMusic {
     }
 
     /// A problem the person fixes once for every download, not per song.
-    public enum Issue: Equatable, Sendable {
+    public enum Issue: Equatable, Codable, Sendable {
         /// YouTube wants a signed-in person: age-restricted, private, or "confirm you're not a bot".
         case signIn
         /// macOS kept yt-dlp from reading the browser's cookies (Safari needs Full Disk Access).

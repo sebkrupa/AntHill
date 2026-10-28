@@ -37,7 +37,7 @@ final class AppModel {
     var menuBarHidden: Set<String> = Set(defaults.stringArray(forKey: "menuBar.hidden") ?? []) {
         didSet { Self.defaults.set(Array(menuBarHidden), forKey: "menuBar.hidden") }
     }
-    let music = MusicQueue(defaults: defaults)
+    let music = MusicQueue(defaults: defaults, history: Store.history)
     let updates = Updates(defaults: defaults)
 
     init() {
@@ -52,5 +52,11 @@ final class AppModel {
 enum Store {
     static var isOverridden: Bool {
         !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty
+    }
+
+    /// The YT-Music history: every download and its log, kept until the person removes it.
+    static var history: URL {
+        if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]!) }
+        return URL.applicationSupportDirectory.appending(path: "AntHill/history.json")
     }
 }
