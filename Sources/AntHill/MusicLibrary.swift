@@ -11,7 +11,8 @@ final class MusicLibrary {
     var error: String?
     /// True when macOS keeps AntHill from controlling Music; the page offers the setting.
     var needsAccess = false
-    var task: Library.Task = .correctNames
+    /// The checked tasks; Run asks about all of them in one pass.
+    var tasks: Set<Library.Task> = Set(Library.Task.allCases)
     /// The tracks the task runs on; none selected runs on all.
     var selection: Set<Library.Track.ID> = []
     /// Questions answered and asked in the current run; nil when no run goes on.
@@ -20,9 +21,20 @@ final class MusicLibrary {
     var changes: [Library.Change]?
     /// The changes the person keeps checked in the review sheet.
     var chosen: Set<Library.Change.ID> = []
+    /// What the last run did to each track, for the first and last columns of the list.
+    var notes: [Library.Track.ID: Note] = [:]
     private var run: Task<Void, Never>?
 
     var running: Bool { progress != nil }
+    /// The task menu's title: the one checked task, or how many are checked.
+    var tasksTitle: String {
+        switch tasks.count {
+        case 0: "No Tasks"
+        case 1: tasks.first!.title
+        case Library.Task.allCases.count: "All Tasks"
+        default: "\(tasks.count) Tasks"
+        }
+    }
     var scope: [Library.Track] { selection.isEmpty ? tracks : tracks.filter { selection.contains($0.id) } }
 
     /// Reads every file track from Music.app. The first time, macOS asks to allow AntHill to control Music.
@@ -56,36 +68,54 @@ final class MusicLibrary {
         }
     }
 
-    /// Asks the model about every track the task applies to, then opens the review sheet.
+    /// Asks the model about every track for all checked tasks at once, a few questions in parallel,
+    /// then opens the review sheet.
     func start(with llama: LlamaConnection) {
-        guard !running else { return }
-        let task = task
-        let questions = Library.questions(task, for: scope)
+        guard !running, !tasks.isEmpty else { return }
+        let scope = scope
+        let questions = Library.questions(tasks, for: scope)
         progress = (0, questions.count)
         error = nil
         run = Task {
             var found: [Library.Change] = []
-            var failures = 0
-            for question in questions {
-                if Task.isCancelled { break }
-                do {
-                    let reply = try await llama.ask(system: question.system, user: question.user)
-                    found += Library.changes(task, question: question, reply: reply)
-                } catch {
-                    failures += 1
-                    // The first questions all failed: the server is away, so stop instead of failing every song.
-                    if failures == min(3, questions.count), failures == (progress?.done ?? 0) + 1 {
-                        self.error = "The model did not answer: \(error.localizedDescription)"
-                        break
+            var failures = 0, answers = 0
+            var answered: Set<Library.Track.ID> = []
+            await withTaskGroup(of: ([Library.Track.ID], Result<[Library.Change], Error>).self) { group in
+                var pending = questions[...]
+                func next() {
+                    guard let question = pending.popFirst() else { return }
+                    group.addTask {
+                        let ids = question.tracks.map(\.id)
+                        do { return (ids, .success(Library.changes(question: question, reply: try await llama.ask(system: question.system, user: question.user)))) }
+                        catch { return (ids, .failure(error)) }
                     }
                 }
-                progress?.done += 1
+                // llama.cpp answers several requests at once when it has slots; more just wait in its queue.
+                for _ in 0..<4 { next() }
+                for await (ids, result) in group {
+                    switch result {
+                    case .success(let changes): found += changes; answers += 1; answered.formUnion(ids)
+                    case .failure(let error):
+                        failures += 1
+                        // The first questions all failed: the server is away, so stop instead of failing every song.
+                        if answers == 0, failures == min(3, questions.count) {
+                            self.error = "The model did not answer: \(error.localizedDescription)"
+                            group.cancelAll()
+                        }
+                    }
+                    progress?.done += 1
+                    if !group.isCancelled, !Task.isCancelled { next() }
+                }
             }
             if failures > 0, self.error == nil { self.error = "The model did not answer for \(failures) songs. Run again to retry them." }
+            let merged = Library.merged(found)
+            for id in answered.subtracting(merged.map(\.id)) where notes[id]?.cleaned != true {
+                notes[id] = Note(cleaned: false, log: "Checked: nothing to change")
+            }
             progress = nil
             run = nil
-            chosen = Set(found.map(\.id))
-            changes = found
+            chosen = Set(merged.map(\.id))
+            changes = merged
         }
     }
 
@@ -95,6 +125,11 @@ final class MusicLibrary {
     func apply() {
         guard let changes else { return }
         var failed: [String] = []
+        // Logs of this apply per track: a kept duplicate can also get a new name.
+        var done: [Library.Track.ID: [String]] = [:]
+        for change in changes where !chosen.contains(change.id) {
+            notes[change.id] = Note(cleaned: false, log: "Not applied: " + change.log)
+        }
         for change in changes where chosen.contains(change.id) {
             let track = "(first file track of library playlist 1 whose persistent ID is \(Library.appleScript(change.track.id)))"
             do {
@@ -111,13 +146,29 @@ final class MusicLibrary {
                     try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
                     try Self.music("delete \(track)")
                 }
+                done[change.id, default: []].append(change.log)
+                if case .trash(let kept) = change.kind { done[kept.id, default: []].append("Removed duplicate “\(change.track.name)”") }
             } catch {
                 failed.append("\(change.track.name): \(error.localizedDescription)")
+                notes[change.id] = Note(cleaned: false, log: "Failed: " + error.localizedDescription)
             }
         }
+        for (id, logs) in done { notes[id] = Note(cleaned: true, log: logs.joined(separator: "; ")) }
         self.changes = nil
         load()
         if !failed.isEmpty { error = "Some changes failed. " + failed.joined(separator: "; ") }
+    }
+
+    /// Closes the review sheet without changing Music.
+    func discard() {
+        chosen = []
+        for change in changes ?? [] { notes[change.id] = Note(cleaned: false, log: "Not applied: " + change.log) }
+        changes = nil
+    }
+
+    struct Note: Equatable, Sendable {
+        var cleaned: Bool
+        var log: String
     }
 
     func insertSample(_ tracks: [Library.Track]) { self.tracks = tracks }

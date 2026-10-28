@@ -112,14 +112,25 @@ enum SelfTest {
             llama.models = ["test-model"]
             check("Run is ready when the model is available", llama.available)
             model.library.insertSample(SeedData.tracks)
-            model.library.task = .organizeUnknown
             model.library.selection = []
+            check("all library tasks are checked by default", model.library.tasks == Set(Library.Task.allCases))
             model.library.start(with: llama)
-            check("Run asks about every song the task applies to", model.library.progress?.total == 2)
+            check("Run asks once about every song plus each duplicate group", model.library.progress?.total == 6)
             for _ in 0..<50 where model.library.running { try? await Task.sleep(for: .seconds(0.1)) }
             check("an unreachable model stops the run, says so, and changes nothing",
-                  !model.library.running && model.library.error != nil && model.library.changes == [])
+                  !model.library.running && model.library.error != nil && model.library.changes == [] && model.library.notes.isEmpty)
             model.library.changes = nil
+            model.library.tasks = [.organizeUnknown]
+            model.library.start(with: llama)
+            check("Organize Unknown alone asks only about songs without an artist", model.library.progress?.total == 2)
+            for _ in 0..<50 where model.library.running { try? await Task.sleep(for: .seconds(0.1)) }
+            model.library.changes = nil
+            model.library.tasks = Set(Library.Task.allCases)
+            model.library.changes = SeedData.changes
+            model.library.discard()
+            check("a cancelled review logs every change as not applied and marks nothing cleaned",
+                  model.library.notes.count == 3 && model.library.notes.values.allSatisfy { !$0.cleaned && $0.log.hasPrefix("Not applied") })
+            model.library.notes = [:]
             model.musicPage = .downloads
             llama.status = .unknown
             (llama.address, llama.model) = (oldAddress, oldModel)

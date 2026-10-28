@@ -30,25 +30,45 @@ private let other = Library.Track(id: "C", name: "Dreams", artist: "Fleetwood Ma
 
 @Test func duplicateAnswerTrashesOnlyListedTracks() throws {
     let question = try #require(Library.questions(.removeDuplicates, for: [daft, daftVideo, other]).first)
-    #expect(Library.changes(.removeDuplicates, question: question, reply: #"{"remove": ["B"]}"#)
+    #expect(Library.changes(question: question, reply: #"{"remove": ["B"]}"#)
         == [.init(track: daftVideo, kind: .trash(keeping: daft))])
-    #expect(Library.changes(.removeDuplicates, question: question, reply: #"{"remove": ["A", "B"]}"#).isEmpty)
-    #expect(Library.changes(.removeDuplicates, question: question, reply: "no idea").isEmpty)
+    #expect(Library.changes(question: question, reply: #"{"remove": ["A", "B"]}"#).isEmpty)
+    #expect(Library.changes(question: question, reply: "no idea").isEmpty)
 }
 
 @Test func correctNamesProposesOnlyRealEdits() throws {
     let question = try #require(Library.questions(.correctNames, for: [daftVideo]).first)
     let reply = "```json\n{\"name\": \"One More Time\", \"artist\": \"Daft Punk\", \"album\": \"\"}\n```"
-    #expect(Library.changes(.correctNames, question: question, reply: reply)
+    #expect(Library.changes(question: question, reply: reply)
         == [.init(track: daftVideo, kind: .edit(name: "One More Time", artist: "Daft Punk", album: ""))])
     let same = #"{"name": "Daft Punk - One More Time (Official Video)", "artist": "", "album": ""}"#
-    #expect(Library.changes(.correctNames, question: question, reply: same).isEmpty)
+    #expect(Library.changes(question: question, reply: same).isEmpty)
 }
 
 @Test func organizeUnknownAsksOnlyAboutTracksWithoutArtist() {
     let unknown = Library.Track(id: "D", name: "Teardrop", artist: "Unknown Artist", album: "", duration: 330)
     #expect(Library.questions(.organizeUnknown, for: [daft, daftVideo, unknown]).map { $0.tracks[0].id } == ["B", "D"])
     #expect(Library.questions(.correctNames, for: [daft, daftVideo, unknown]).count == 3)
+}
+
+@Test func allTasksAskOnceAboutEverySong() {
+    let all = Library.questions(Set(Library.Task.allCases), for: [daft, daftVideo, other])
+    #expect(all.map(\.task) == [.removeDuplicates, .correctNames, .correctNames, .correctNames])
+    #expect(Library.questions([.organizeUnknown], for: [daft, daftVideo, other]).map { $0.tracks[0].id } == ["B"])
+    #expect(Library.questions([], for: [daft]).isEmpty)
+}
+
+@Test func mergedDropsEditsOfTrashedSongs() {
+    let trash = Library.Change(track: daftVideo, kind: .trash(keeping: daft))
+    let edit = Library.Change(track: daftVideo, kind: .edit(name: "One More Time", artist: "Daft Punk", album: ""))
+    let keep = Library.Change(track: other, kind: .edit(name: "Dreams", artist: "Fleetwood Mac", album: "Rumours 2"))
+    #expect(Library.merged([edit, trash, keep]) == [trash, keep])
+}
+
+@Test func changeLogSaysWhatChangedToWhat() {
+    #expect(Library.Change(track: daftVideo, kind: .edit(name: "One More Time", artist: "Daft Punk", album: "")).log
+        == "Name: “Daft Punk - One More Time (Official Video)” → “One More Time”; Artist: none → “Daft Punk”")
+    #expect(Library.Change(track: daftVideo, kind: .trash(keeping: daft)).log == "Duplicate of “One More Time”: moved to Trash")
 }
 
 @Test func escapesAppleScriptStrings() {

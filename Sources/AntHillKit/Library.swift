@@ -44,6 +44,7 @@ public enum Library {
                 name: the song title only. Remove video words like (Official Video), (Official Audio), [HD], (Lyrics), (Visualizer), and "Remastered 2004".
                 Keep words that name a different version: Live, Remix, Acoustic, Edit, feat.
                 artist: the performing artist. When the name is "Artist - Title", move the artist out of the name.
+                When the artist is empty or "Unknown Artist", find it from the name; when you can't tell, keep it.
                 album: the album the song first came out on, only when you are sure. Otherwise keep the current album.
                 Never guess. When a tag is already right, return it unchanged.
                 Answer only JSON: {"name": "...", "artist": "...", "album": "..."}.
@@ -72,13 +73,35 @@ public enum Library {
         public var id: String { track.id }
 
         public init(track: Track, kind: Kind) { self.track = track; self.kind = kind }
+
+        /// What the change does, from what to what, for the log column of the list.
+        public var log: String {
+            switch kind {
+            case .edit(let name, let artist, let album):
+                return [("Name", track.name, name), ("Artist", track.artist, artist), ("Album", track.album, album)]
+                    .filter { $0.1 != $0.2 }
+                    .map { "\($0.0): \($0.1.isEmpty ? "none" : "“\($0.1)”") → “\($0.2)”" }
+                    .joined(separator: "; ")
+            case .trash(let kept):
+                return "Duplicate of “\(kept.name)”: moved to Trash"
+            }
+        }
     }
 
     /// One question for the model: the tracks it looks at together, and the instructions.
     public struct Question: Sendable {
+        public let task: Task
         public let tracks: [Track]
         public let system: String
         public let user: String
+    }
+
+    /// The questions for all checked tasks, asked in one run. Correct Names also finds missing artists,
+    /// so with it checked Organize Unknown adds no questions: one question per song at most.
+    public static func questions(_ tasks: Set<Task>, for tracks: [Track]) -> [Question] {
+        let perSong: Task? = tasks.contains(.correctNames) ? .correctNames : tasks.contains(.organizeUnknown) ? .organizeUnknown : nil
+        return (tasks.contains(.removeDuplicates) ? questions(.removeDuplicates, for: tracks) : [])
+            + (perSong.map { questions($0, for: tracks) } ?? [])
     }
 
     /// The questions a task asks about `tracks`. Every track the task applies to is checked.
@@ -87,24 +110,24 @@ public enum Library {
         case .removeDuplicates:
             // Only songs that could be the same recording go to the model together.
             return duplicateCandidates(tracks).map { group in
-                Question(tracks: group, system: task.system, user: json(group.map {
+                Question(task: task, tracks: group, system: task.system, user: json(group.map {
                     ["id": $0.id, "name": $0.name, "artist": $0.artist, "album": $0.album, "seconds": Int($0.duration)]
                 }))
             }
         case .correctNames, .organizeUnknown:
             return tracks.filter { task == .correctNames || isUnknown($0.artist) }.map { track in
-                Question(tracks: [track], system: task.system,
+                Question(task: task, tracks: [track], system: task.system,
                          user: json(["name": track.name, "artist": track.artist, "album": track.album]))
             }
         }
     }
 
     /// The changes in the model's answer to `question`. Answers that are not the asked JSON give none.
-    public static func changes(_ task: Task, question: Question, reply: String) -> [Change] {
+    public static func changes(question: Question, reply: String) -> [Change] {
         guard let start = reply.firstIndex(of: "{"), let end = reply.lastIndex(of: "}"),
               let object = try? JSONSerialization.jsonObject(with: Data(reply[start...end].utf8)) as? [String: Any]
         else { return [] }
-        switch task {
+        switch question.task {
         case .removeDuplicates:
             let remove = Set(object["remove"] as? [String] ?? [])
             // Something must stay: an answer that removes the whole group is ignored.
@@ -119,6 +142,16 @@ public enum Library {
             let name = value("name", track.name), artist = value("artist", track.artist), album = value("album", track.album)
             guard (name, artist, album) != (track.name, track.artist, track.album) else { return [] }
             return [Change(track: track, kind: .edit(name: name, artist: artist, album: album))]
+        }
+    }
+
+    /// The changes of one run, one per track: a track that goes to the Trash needs no new name.
+    public static func merged(_ changes: [Change]) -> [Change] {
+        let trashed = Set(changes.compactMap { if case .trash = $0.kind { $0.id } else { nil } })
+        var seen: Set<Change.ID> = []
+        return changes.filter { change in
+            if case .edit = change.kind, trashed.contains(change.id) { return false }
+            return seen.insert(change.id).inserted
         }
     }
 

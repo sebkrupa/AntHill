@@ -5,6 +5,8 @@ import AntHillKit
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @State private var choosingTasks = false
+    @State private var sortOrder = [KeyPathComparator(\Row.name)]
 
     private var library: MusicLibrary { model.library }
 
@@ -12,12 +14,26 @@ struct LibraryView: View {
         @Bindable var library = library
         VStack(spacing: 0) {
             HStack(spacing: Space.sm) {
-                Picker("Task", selection: $library.task) {
-                    ForEach(Library.Task.allCases) { Text($0.title).tag($0) }
+                Button { choosingTasks.toggle() } label: {
+                    Label(library.tasksTitle, systemImage: "chevron.down")
+                        .labelStyle(TrailingIcon())
                 }
-                .labelsHidden()
                 .fixedSize()
                 .disabled(library.running)
+                .help("The checks Run does, all in one pass")
+                .popover(isPresented: $choosingTasks, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        ForEach(Library.Task.allCases) { task in
+                            Toggle(task.title, isOn: Binding(
+                                get: { library.tasks.contains(task) },
+                                set: { if $0 { library.tasks.insert(task) } else { library.tasks.remove(task) } }
+                            ))
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .padding(Space.md)
+                    .noInitialFocus()
+                }
                 if let progress = library.progress {
                     ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
                         .frame(width: 160)
@@ -28,8 +44,8 @@ struct LibraryView: View {
                 } else {
                     Button("Run", systemImage: "play.fill") { library.start(with: model.llama) }
                         .buttonStyle(.borderedProminent)
-                        .disabled(library.tracks.isEmpty || !model.llama.available)
-                        .help("Ask \(model.llama.model ?? "the model") about every song, then review the changes")
+                        .disabled(library.tracks.isEmpty || library.tasks.isEmpty || !model.llama.available)
+                        .help("Ask \(model.llama.model ?? "the model") about every song for all checked tasks, then review the changes")
                     Text(library.selection.isEmpty ? "All \(library.tracks.count) songs" : "\(library.selection.count) selected songs")
                         .foregroundStyle(.secondary)
                 }
@@ -64,17 +80,57 @@ struct LibraryView: View {
                     .padding([.horizontal, .bottom], Space.margin)
             }
             Divider()
-            Table(library.tracks, selection: $library.selection) {
+            Table(rows, selection: $library.selection, sortOrder: $sortOrder) {
+                TableColumn("Cleaned", value: \.cleaned) { row in
+                    if row.cleaned == 1 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .help("Cleaned")
+                            .accessibilityLabel("Cleaned")
+                    }
+                }
+                .width(56)
                 TableColumn("Name", value: \.name)
                 TableColumn("Artist", value: \.artist)
                 TableColumn("Album", value: \.album)
+                TableColumn("Log", value: \.log) { row in
+                    Text(row.log)
+                        .foregroundStyle(.secondary)
+                        .help(row.log)
+                }
             }
             .overlay { empty }
         }
         .task { if library.tracks.isEmpty { library.load() } }
-        .sheet(isPresented: Binding(get: { library.changes != nil }, set: { if !$0 { library.changes = nil } })) {
+        .sheet(isPresented: Binding(get: { library.changes != nil }, set: { if !$0, library.changes != nil { library.discard() } })) {
             ReviewSheet()
         }
+    }
+
+    /// Title first, then the icon, like a pull-down button.
+    struct TrailingIcon: LabelStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            HStack(spacing: Space.xs) {
+                configuration.title
+                configuration.icon.imageScale(.small)
+            }
+        }
+    }
+
+    /// One song in the list with what the last run did to it, sortable by every column.
+    nonisolated struct Row: Identifiable, Sendable {
+        let track: Library.Track
+        let note: MusicLibrary.Note?
+        var id: String { track.id }
+        var name: String { track.name }
+        var artist: String { track.artist }
+        var album: String { track.album }
+        var cleaned: Int { note?.cleaned == true ? 1 : 0 }
+        var log: String { note?.log ?? "" }
+    }
+
+    private var rows: [Row] {
+        library.tracks.map { Row(track: $0, note: library.notes[$0.id]) }.sorted(using: sortOrder)
     }
 
     @ViewBuilder private var empty: some View {
@@ -106,7 +162,7 @@ struct ReviewSheet: View {
         let changes = library.changes ?? []
         VStack(alignment: .leading, spacing: Space.lg) {
             VStack(alignment: .leading, spacing: Space.xs) {
-                Text(library.task.title).font(.headline)
+                Text(library.tasksTitle).font(.headline)
                 Text(changes.isEmpty ? "The model found nothing to change." : "\(library.chosen.count) of \(changes.count) changes chosen")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -129,7 +185,7 @@ struct ReviewSheet: View {
                     Button("Done") { library.changes = nil }
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Cancel", role: .cancel) { library.changes = nil }
+                    Button("Cancel", role: .cancel) { library.discard() }
                         .keyboardShortcut(.cancelAction)
                     Button("Apply \(library.chosen.count) Changes") { library.apply() }
                         .buttonStyle(.borderedProminent)
