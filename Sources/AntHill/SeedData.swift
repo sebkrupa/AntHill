@@ -92,6 +92,12 @@ enum SeedData {
         model.llama.model = "qwen3-8b"
         model.llama.status = .connected
         model.library.insertSample(tracks)
+        model.library.notes = [
+            "T1": .init(cleaned: true, log: "Removed duplicate “Daft Punk - One More Time (Official Video)”"),
+            "T3": .init(cleaned: true, log: changes[1].log),
+            "T4": .init(cleaned: false, log: "Not applied: " + changes[2].log),
+            "T5": .init(cleaned: false, log: "Checked: nothing to change"),
+        ]
         for report in shopReports.reversed() { model.shopChecks.add(report) }
         model.network.name = "ollama"
         model.network.insertSample(connections)

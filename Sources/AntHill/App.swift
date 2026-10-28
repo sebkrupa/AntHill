@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import AntHillKit
 
 // AntHill
 //   AntHill                      the app
@@ -62,13 +63,22 @@ struct AntHillApp: App {
                     model.musicPage = .library
                 }
                 .keyboardShortcut("2", modifiers: [.command, .option])
-                Button("Run \(model.library.task.title)") {
+                Button("Run \(model.library.tasksTitle)") {
                     model.sidebar = .ytMusic
                     model.musicPage = .library
                     model.library.start(with: model.llama)
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(!model.llama.available || model.library.running || model.library.tracks.isEmpty)
+                .disabled(!model.llama.available || model.library.running || model.library.tracks.isEmpty || model.library.tasks.isEmpty)
+                Menu("Library Tasks") {
+                    ForEach(Library.Task.allCases) { task in
+                        Toggle(task.title, isOn: Binding(
+                            get: { model.library.tasks.contains(task) },
+                            set: { if $0 { model.library.tasks.insert(task) } else { model.library.tasks.remove(task) } }
+                        ))
+                    }
+                }
+                .disabled(model.library.running)
                 Button("Stop Library Task") { model.library.stop() }
                     .keyboardShortcut(".", modifiers: .command)
                     .disabled(!model.library.running)
