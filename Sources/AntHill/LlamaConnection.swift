@@ -2,7 +2,7 @@ import Foundation
 import AntHillKit
 
 /// The local llama.cpp server (llama-server) and the model AntHill asks.
-/// Settings > Models edits it; the YT-Music Library tab shows while the model is available.
+/// Settings > Models edits it; YT-Music Library runs tasks only while the model is available.
 @Observable
 final class LlamaConnection {
     enum Status: Equatable {

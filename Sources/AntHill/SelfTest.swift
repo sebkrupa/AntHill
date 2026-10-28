@@ -108,9 +108,9 @@ enum SelfTest {
             model.musicPage = .library
             llama.status = .connected
             llama.models = ["other-model"]
-            check("the Library tab hides while the chosen model is not on the server", model.shownMusicPage == .downloads)
+            check("Run waits for the model while the chosen model is not on the server", !llama.available)
             llama.models = ["test-model"]
-            check("the Library tab shows when the model is available", model.shownMusicPage == .library)
+            check("Run is ready when the model is available", llama.available)
             model.library.insertSample(SeedData.tracks)
             model.library.task = .organizeUnknown
             model.library.selection = []

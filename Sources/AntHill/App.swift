@@ -62,7 +62,6 @@ struct AntHillApp: App {
                     model.musicPage = .library
                 }
                 .keyboardShortcut("2", modifiers: [.command, .option])
-                .disabled(!model.llama.available)
                 Button("Run \(model.library.task.title)") {
                     model.sidebar = .ytMusic
                     model.musicPage = .library

@@ -67,9 +67,6 @@ final class AppModel {
         }
     }
 
-    /// The page shown: Library only while the model is available.
-    var shownMusicPage: MusicPage { llama.available ? musicPage : .downloads }
-
     var menuBarModules: [Module] { Module.allCases.filter { !menuBarHidden.contains($0.rawValue) } }
 }
 

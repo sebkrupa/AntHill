@@ -39,11 +39,17 @@ enum Snapshot {
                     capture(to: "\(dir)/\(page.rawValue)-\(mode).png")
                 }
                 // The YT-Music Library tab: yt-music-library-<mode>.png.
-                if only?.contains("yt-music") ?? true, model.llama.available {
+                if only?.contains("yt-music") ?? true {
                     model.sidebar = .ytMusic
                     model.musicPage = .library
                     try? await Task.sleep(for: .seconds(0.8))
                     capture(to: "\(dir)/yt-music-library-\(mode).png")
+                    // Without the model: yt-music-library-offline-<mode>.png.
+                    let status = model.llama.status
+                    model.llama.status = .unknown
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/yt-music-library-offline-\(mode).png")
+                    model.llama.status = status
                     model.musicPage = .downloads
                 }
             }
