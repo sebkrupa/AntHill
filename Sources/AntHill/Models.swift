@@ -38,6 +38,12 @@ final class AppModel {
         didSet { Self.defaults.set(Array(menuBarHidden), forKey: "menuBar.hidden") }
     }
     let music = MusicQueue(defaults: defaults)
+    let updates = Updates(defaults: defaults)
+
+    init() {
+        // Test runs must not reach GitHub or show alerts.
+        if !Store.isOverridden { updates.checkDaily() }
+    }
 
     var menuBarModules: [Module] { Module.allCases.filter { !menuBarHidden.contains($0.rawValue) } }
 }

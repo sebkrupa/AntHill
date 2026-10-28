@@ -29,6 +29,10 @@ struct AntHillApp: App {
         .defaultLaunchBehavior(.presented)
         .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { Task { await model.updates.check(userAsked: true) } }
+                    .keyboardShortcut("u", modifiers: [.command, .shift])
+            }
             SidebarCommands()
             ToolbarCommands()
             CommandMenu("YT-Music") {

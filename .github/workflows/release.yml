@@ -1,0 +1,40 @@
+# Publishes a release that installed copies of AntHill offer as an update.
+# Run it by hand: GitHub > Actions > Release > Run workflow. Pick the branch
+# or commit to ship and type the version. Nothing publishes on push.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish, like 1.2.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Version must look like 1.2.0, got $VERSION"; exit 1; }
+          if gh release view "v$VERSION" >/dev/null 2>&1; then echo "v$VERSION is already published"; exit 1; fi
+
+      - name: Test
+        run: swift test
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Publish
+        run: |
+          zip="AntHill-$VERSION.zip"
+          ditto -c -k --keepParent "$HOME/Applications/AntHill.app" "$zip"
+          gh release create "v$VERSION" "$zip" --target "$GITHUB_SHA" --title "AntHill $VERSION" --generate-notes

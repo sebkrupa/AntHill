@@ -6,6 +6,7 @@
 # Usage: ./build.sh            release build, install
 #        ./build.sh --debug    debug build, install
 #        ./build.sh --open     install, then quit the running copy and open the new one
+#        VERSION=1.2.0 ./build.sh   build that version (the release workflow does this)
 set -euo pipefail
 here=${0:A:h}
 name="AntHill"
@@ -42,7 +43,9 @@ mkdir -p "$HOME/Applications"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/$name"
-sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
+# The version: VERSION from the release workflow, else the newest git tag (v1.2.0 -> 1.2.0).
+version=${VERSION:-$(git -C "$here" describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)}
+sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" -e "s/__VERSION__/${version#v}/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
 # The icon: Icon/AppIcon.icon -> Resources/Assets.car + AppIcon.icns, rebuilt when it changed.
 # actool ships with Xcode only; without it tools/make_icns.swift draws a flat AppIcon.icns.
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then

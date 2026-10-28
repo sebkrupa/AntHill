@@ -14,6 +14,9 @@ struct MenuBarContent: View {
             }
         }
         Divider()
+        if let release = model.updates.available {
+            Button("Download AntHill \(release.version)…") { model.updates.download() }
+        }
         Button("Open AntHill") {
             // Back in the Dock first, or the window opens behind other apps.
             NSApp.setActivationPolicy(.regular)
