@@ -4,6 +4,7 @@ import AntHillKit
 /// YT-Music > Library: the Music.app songs, a task for the local model, and Run.
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
 
     private var library: MusicLibrary { model.library }
 
@@ -27,7 +28,7 @@ struct LibraryView: View {
                 } else {
                     Button("Run", systemImage: "play.fill") { library.start(with: model.llama) }
                         .buttonStyle(.borderedProminent)
-                        .disabled(library.tracks.isEmpty)
+                        .disabled(library.tracks.isEmpty || !model.llama.available)
                         .help("Ask \(model.llama.model ?? "the model") about every song, then review the changes")
                     Text(library.selection.isEmpty ? "All \(library.tracks.count) songs" : "\(library.selection.count) selected songs")
                         .foregroundStyle(.secondary)
@@ -41,6 +42,20 @@ struct LibraryView: View {
             .font(.callout)
             .padding(Space.margin)
             .gridArea("header")
+            if !model.llama.available {
+                HStack(spacing: Space.sm) {
+                    Label("Corrections and cleanups need a local model. Connect llama.cpp in Settings to run them.",
+                          systemImage: "cpu")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Open Model Settings…") {
+                        model.settingsTab = .models
+                        openSettings()
+                    }
+                }
+                .font(.callout)
+                .padding([.horizontal, .bottom], Space.margin)
+            }
             if let error = library.error, !library.tracks.isEmpty {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
