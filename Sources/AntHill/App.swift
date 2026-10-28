@@ -37,6 +37,16 @@ struct AntHillApp: App {
                     .disabled(!model.music.hasFinished)
                 Button("Change Download Folder…") { model.music.chooseFolder() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Divider()
+                Button((model.music.issue?.fixTitle ?? "Fix Problem") + "…") {
+                    model.sidebar = .ytMusic
+                    model.music.showsFix = true
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(model.music.issue == nil)
+                Button("Retry Failed") { model.music.retryFailed() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .disabled(!model.music.hasFailed)
             }
         }
 

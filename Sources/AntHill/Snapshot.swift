@@ -1,4 +1,5 @@
 import AppKit
+import AntHillKit
 import IOKit.pwr_mgt
 import SwiftUI
 
@@ -47,6 +48,25 @@ enum Snapshot {
                         window.orderFront(nil)
                         try? await Task.sleep(for: .seconds(0.4))
                         capture(to: "\(dir)/log-\(index)-\(mode).png", window: window)
+                        window.close()
+                    }
+                }
+            }
+            // The playlist sheet and the fix popover: playlist-<mode>.png, fix-<issue>-<mode>.png.
+            if only == nil || only?.contains("playlist") == true {
+                let pick = PlaylistPick(url: "https://www.youtube.com/playlist?list=sample")
+                pick.entries = SeedData.playlist
+                pick.chosen = Set(pick.entries.prefix(5).map(\.id))
+                pick.loading = false
+                let panels: [(String, AnyView)] = [("playlist", AnyView(PlaylistSheet(pick: pick)))]
+                    + [YTMusic.Issue.signIn, .cookieAccess, .missingTool].map { ("fix-\($0)", AnyView(IssueFixView(issue: $0))) }
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    for (name, view) in panels {
+                        let window = NSWindow(contentViewController: NSHostingController(rootView: view.environment(model).themed()))
+                        window.orderFront(nil)
+                        try? await Task.sleep(for: .seconds(0.6))
+                        capture(to: "\(dir)/\(name)-\(mode).png", window: window)
                         window.close()
                     }
                 }

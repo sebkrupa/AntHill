@@ -1,9 +1,17 @@
 import Foundation
+import AntHillKit
 
 /// Sample queue for snapshots: APP_SEED=1 with APP_STORE in /tmp.
 /// Every status here is one a real download reaches.
 @MainActor
 enum SeedData {
+    static let playlist: [YTMusic.Entry] = [
+        "Daft Punk - One More Time", "Fleetwood Mac - Dreams", "Nina Simone - Feeling Good",
+        "Massive Attack - Teardrop", "Portishead - Glory Box", "Radiohead - Weird Fishes/Arpeggi",
+        "Bring Me The Horizon - Happy Song (Live on the Honda Stage at Webster Hall)",
+        "Björk - Jóga", "Air - La femme d'argent", "Bonobo - Kerala",
+    ].enumerated().map { .init(id: "sample\($0.offset)", title: $0.element) }
+
     static func insertIfRequested(into model: AppModel) {
         guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
         guard Store.isOverridden else {
@@ -26,6 +34,12 @@ enum SeedData {
             if case .failed = sample.1 { item.stage = .info }
             model.music.insertSample(item)
         }
+        let ageCheck = DownloadItem(url: "https://www.youtube.com/watch?v=sample7")
+        ageCheck.title = "Bring Me The Horizon - Happy Song (Live on the Honda Stage at Webster Hall)"
+        ageCheck.status = .failed("Sign in to confirm your age. This video may be inappropriate for some users. (youtube, sample7)")
+        ageCheck.issue = .signIn
+        ageCheck.stage = .info
+        model.music.insertSample(ageCheck)
         let converting = DownloadItem(url: "https://www.youtube.com/watch?v=sample6")
         converting.title = "Find Your Focus - Atmospheric Music for Deep Work"
         converting.status = .downloading

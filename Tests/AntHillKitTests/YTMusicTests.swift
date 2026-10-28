@@ -38,3 +38,30 @@ func parses(_ line: String, expected: YTMusic.Line?) {
     #expect(args.last == "https://youtu.be/abc")
     #expect(args.contains("home:/out"))
 }
+
+@Test func findsPlaylists() {
+    #expect(YTMusic.playlistID("https://www.youtube.com/watch?v=abc&list=PL123") == "PL123")
+    #expect(YTMusic.playlistID("https://music.youtube.com/playlist?list=OLAK5") == "OLAK5")
+    #expect(YTMusic.playlistID("https://www.youtube.com/watch?v=abc") == nil)
+    #expect(YTMusic.playlistID("https://www.youtube.com/watch?v=abc&list=") == nil)
+}
+
+@Test func parsesPlaylistEntries() {
+    #expect(YTMusic.parseEntry("sd:entry fOT0BUpITw8 Peso Pluma - Bellakeo") == .init(id: "fOT0BUpITw8", title: "Peso Pluma - Bellakeo"))
+    #expect(YTMusic.parseEntry("sd:entry abc") == .init(id: "abc", title: "abc"))
+    #expect(YTMusic.parseEntry("[youtube:tab] Downloading page") == nil)
+    #expect(YTMusic.parseEntry("sd:entry ") == nil)
+}
+
+@Test func findsIssues() {
+    #expect(YTMusic.issue(in: "ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication.") == .signIn)
+    #expect(YTMusic.issue(in: "ERROR: [Errno 1] Operation not permitted: '/Users/a/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies'") == .cookieAccess)
+    #expect(YTMusic.issue(in: "ERROR: [youtube] x: Video unavailable") == nil)
+}
+
+@Test func downloadsOneSongWithCookies() {
+    let args = YTMusic.arguments(url: "https://youtu.be/abc", folder: "/out", temp: "/tmp/x", browser: .chrome)
+    #expect(args.contains("--no-playlist"))
+    #expect(args.suffix(4) == ["--cookies-from-browser", "chrome", "--", "https://youtu.be/abc"])
+    #expect(!YTMusic.arguments(url: "u", folder: "/o", temp: "/t").contains("--cookies-from-browser"))
+}

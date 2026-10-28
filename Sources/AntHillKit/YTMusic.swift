@@ -60,11 +60,104 @@ public enum YTMusic {
         return true
     }
 
+    /// The playlist id of a link with `list=`, like watch?v=x&list=PL... or /playlist?list=PL...
+    public static func playlistID(_ text: String) -> String? {
+        URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines))?
+            .queryItems?.first { $0.name == "list" }?.value.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The link that downloads one song of a playlist.
+    public static func videoLink(id: String) -> String { "https://www.youtube.com/watch?v=\(id)" }
+
+    /// One song of a playlist: its video id and title.
+    public struct Entry: Equatable, Sendable {
+        public let id: String
+        public let title: String
+        public init(id: String, title: String) { self.id = id; self.title = title }
+    }
+
+    /// yt-dlp arguments that list a playlist's songs without downloading them.
+    public static func playlistArguments(url: String, browser: Browser?) -> [String] {
+        ["--flat-playlist", "--yes-playlist", "--print", "sd:entry %(id)s %(title)s"]
+            + cookieArguments(browser) + ["--", url]
+    }
+
+    /// "sd:entry abc Artist - Title" -> Entry(id: "abc", title: "Artist - Title")
+    public static func parseEntry(_ line: String) -> Entry? {
+        guard line.hasPrefix("sd:entry ") else { return nil }
+        let rest = line.dropFirst(9)
+        let id = rest.prefix { $0 != " " }
+        guard !id.isEmpty else { return nil }
+        let title = rest.dropFirst(id.count).trimmingCharacters(in: .whitespaces)
+        return Entry(id: String(id), title: title.isEmpty ? String(id) : title)
+    }
+
+    /// Browsers yt-dlp reads cookies from, to download as the signed-in person.
+    public enum Browser: String, CaseIterable, Identifiable, Sendable {
+        case safari, chrome, firefox, brave, edge, opera, vivaldi, chromium
+
+        public var id: String { rawValue }
+
+        public var title: String {
+            switch self {
+            case .safari: "Safari"
+            case .chrome: "Google Chrome"
+            case .firefox: "Firefox"
+            case .brave: "Brave"
+            case .edge: "Microsoft Edge"
+            case .opera: "Opera"
+            case .vivaldi: "Vivaldi"
+            case .chromium: "Chromium"
+            }
+        }
+
+        public var bundleID: String {
+            switch self {
+            case .safari: "com.apple.Safari"
+            case .chrome: "com.google.Chrome"
+            case .firefox: "org.mozilla.firefox"
+            case .brave: "com.brave.Browser"
+            case .edge: "com.microsoft.edgemac"
+            case .opera: "com.operasoftware.Opera"
+            case .vivaldi: "com.vivaldi.Vivaldi"
+            case .chromium: "org.chromium.Chromium"
+            }
+        }
+    }
+
+    static func cookieArguments(_ browser: Browser?) -> [String] {
+        browser.map { ["--cookies-from-browser", $0.rawValue] } ?? []
+    }
+
+    /// A problem the person fixes once for every download, not per song.
+    public enum Issue: Equatable, Sendable {
+        /// YouTube wants a signed-in person: age-restricted, private, or "confirm you're not a bot".
+        case signIn
+        /// macOS kept yt-dlp from reading the browser's cookies (Safari needs Full Disk Access).
+        case cookieAccess
+        case missingTool
+    }
+
+    /// The issue behind a yt-dlp error line, if it is one the person can fix once.
+    public static func issue(in error: String) -> Issue? {
+        let text = error.lowercased()
+        if text.contains("cookies") && (text.contains("operation not permitted") || text.contains("permission denied")) {
+            return .cookieAccess
+        }
+        if text.contains("sign in to confirm") || text.contains("--cookies-from-browser")
+            || text.contains("private video") || text.contains("members-only") {
+            return .signIn
+        }
+        return nil
+    }
+
     /// yt-dlp arguments: best audio as m4a, cover and tags, artist and title from
     /// "Artist - Title", no link, description, or channel name in the file.
     /// Downloads into `temp` so Music.app never grabs a half-converted file.
-    public static func arguments(url: String, folder: String, temp: String) -> [String] {
+    /// One song only: a playlist link goes through `playlistArguments` first.
+    public static func arguments(url: String, folder: String, temp: String, browser: Browser? = nil) -> [String] {
         [
+            "--no-playlist",
             "--newline", "--progress",
             "--progress-template", "download:sd:pct %(progress._percent_str)s",
             "--print", "before_dl:sd:title %(title)s",
@@ -80,8 +173,7 @@ public enum YTMusic {
             "--parse-metadata", "%(meta_synopsis|)s:(?P<meta_synopsis>.*)",
             "--paths", "home:\(folder)", "--paths", "temp:\(temp)",
             "--output", "%(title)s.%(ext)s",
-            "--", url,
-        ]
+        ] + cookieArguments(browser) + ["--", url]
     }
 
     public static func parse(_ line: String) -> Line? {

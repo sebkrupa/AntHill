@@ -1,4 +1,5 @@
 import AppKit
+import AntHillKit
 
 /// Self-test for agents: runs the app's real functions on a test store,
 /// prints PASS or FAIL per check, and quits with exit code 0 or 1.
@@ -48,6 +49,31 @@ enum SelfTest {
                     check("removing an item takes it off the list", !queue.items.contains { $0.id == last.id })
                 }
             }
+            queue.add("https://www.youtube.com/watch?v=abc&list=PL123")
+            check("a playlist link opens the playlist sheet and queues nothing",
+                  queue.playlist?.url.hasSuffix("list=PL123") == true && queue.items.count == before + 1)
+            if let pick = queue.playlist {
+                pick.entries = [.init(id: "a1", title: "One"), .init(id: "b2", title: "Two"), .init(id: "c3", title: "Three")]
+                pick.chosen = ["a1", "c3"]
+                pick.loading = false
+                let count = queue.items.count
+                queue.downloadPlaylist()
+                check("Download queues only the checked songs, in playlist order",
+                      queue.items.suffix(2).map(\.url) == [YTMusic.videoLink(id: "a1"), YTMusic.videoLink(id: "c3")]
+                          && queue.items.count == count + 2 && queue.playlist == nil)
+            }
+            let blocked = DownloadItem(url: "https://youtu.be/age")
+            blocked.status = .failed("Sign in to confirm your age.")
+            blocked.issue = .signIn
+            queue.insertSample(blocked)
+            check("a sign-in failure shows the fix button", queue.issue == .signIn)
+            let oldBrowser = queue.browser
+            queue.useBrowser(.firefox)
+            check("choosing a browser saves it and retries the song",
+                  MusicQueue(defaults: AppModel.defaults).browser == .firefox && blocked.status == .waiting && queue.issue == nil)
+            queue.browser = oldBrowser
+            queue.remove(blocked)
+
             model.menuBarHidden = []
             check("every module is in the menu bar by default", model.menuBarModules == Module.allCases)
             model.menuBarHidden = [Module.ytMusic.rawValue]

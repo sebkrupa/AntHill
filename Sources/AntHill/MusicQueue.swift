@@ -15,6 +15,8 @@ final class DownloadItem: Identifiable {
     var status: Status = .waiting
     var progress: Double = 0
     var file: String?
+    /// A problem behind the failure that the person fixes once (the toolbar's fix button).
+    var issue: YTMusic.Issue?
     /// The stage yt-dlp works on now; on failure, the stage that failed.
     var stage: YTMusic.Stage = .start
     /// yt-dlp output, without the progress lines; the Log button shows it.
@@ -26,15 +28,38 @@ final class DownloadItem: Identifiable {
 
     var name: String { title ?? url }
     var canPause: Bool { status == .waiting || status == .downloading || status == .paused }
+    var failed: Bool { if case .failed = status { true } else { false } }
+}
+
+/// The songs of a pasted playlist link; the person picks which ones to download.
+@Observable
+final class PlaylistPick: Identifiable {
+    let id = UUID()
+    let url: String
+    var entries: [YTMusic.Entry] = []
+    /// Video ids of the songs to download.
+    var chosen: Set<String> = []
+    var loading = true
+    var error: String?
+    var issue: YTMusic.Issue?
+    fileprivate var process: Process?
+    fileprivate var lastError: String?
+
+    init(url: String) { self.url = url }
 }
 
 /// The YT-Music queue: runs yt-dlp for one item at a time, in order.
 @Observable
 final class MusicQueue {
     static let defaultFolder = NSString(string: "~/Music/Music/Media.localized/Automatically Add to Music.localized").expandingTildeInPath
-    static let installHint = "yt-dlp not found. Install: brew install yt-dlp ffmpeg"
+    nonisolated static let installHint = "yt-dlp not found. Install: brew install yt-dlp ffmpeg"
 
     private(set) var items: [DownloadItem] = []
+    /// The playlist sheet; set while the person picks songs.
+    var playlist: PlaylistPick?
+    /// Shows the fix popover beside the page title.
+    var showsFix = false
+    private(set) var installing = false
     /// Self-test turns this off so no real download starts.
     var startsDownloads = true
     private let defaults: UserDefaults
@@ -46,17 +71,116 @@ final class MusicQueue {
     init(defaults: UserDefaults) {
         self.defaults = defaults
         folder = defaults.string(forKey: "music.folder") ?? Self.defaultFolder
+        browser = defaults.string(forKey: "music.browser").flatMap(YTMusic.Browser.init)
+    }
+
+    /// The browser whose YouTube sign-in yt-dlp borrows; nil downloads signed out.
+    var browser: YTMusic.Browser? {
+        didSet { defaults.set(browser?.rawValue, forKey: "music.browser") }
     }
 
     var hasFinished: Bool { items.contains { $0.status == .done } }
+    var hasFailed: Bool { items.contains(where: \.failed) }
 
-    /// Queues a link. Returns false and adds nothing when the text is not a link.
+    /// The first problem the person can fix once, from failed songs or the playlist sheet.
+    var issue: YTMusic.Issue? {
+        playlist?.issue ?? items.first { $0.failed && $0.issue != nil }?.issue
+    }
+
+    /// Browsers on this Mac that yt-dlp can read, the default browser first.
+    var installedBrowsers: [YTMusic.Browser] {
+        let workspace = NSWorkspace.shared
+        let defaultID = workspace.urlForApplication(toOpen: URL(string: "https://youtube.com")!)
+            .flatMap { Bundle(url: $0)?.bundleIdentifier }
+        return YTMusic.Browser.allCases
+            .filter { workspace.urlForApplication(withBundleIdentifier: $0.bundleID) != nil }
+            .sorted { a, _ in a.bundleID == defaultID }
+    }
+
+    /// Queues a link. A playlist link opens the playlist sheet instead.
+    /// Returns false and adds nothing when the text is not a link.
     @discardableResult
     func add(_ text: String) -> Bool {
         guard YTMusic.isLink(text) else { return false }
-        items.append(DownloadItem(url: text.trimmingCharacters(in: .whitespacesAndNewlines)))
-        startNext()
+        let url = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if YTMusic.playlistID(url) != nil {
+            loadPlaylist(PlaylistPick(url: url))
+        } else {
+            items.append(DownloadItem(url: url))
+            startNext()
+        }
         return true
+    }
+
+    /// Queues the chosen songs of the playlist sheet, in playlist order, and closes it.
+    func downloadPlaylist() {
+        guard let pick = playlist else { return }
+        for entry in pick.entries where pick.chosen.contains(entry.id) {
+            let item = DownloadItem(url: YTMusic.videoLink(id: entry.id))
+            item.title = entry.title
+            items.append(item)
+        }
+        closePlaylist()
+        startNext()
+    }
+
+    func closePlaylist() {
+        playlist?.process?.terminate()
+        playlist = nil
+    }
+
+    /// Puts failed songs back in the queue; with an issue, only the songs it stopped.
+    func retryFailed(_ issue: YTMusic.Issue? = nil) {
+        for item in items where item.failed && (issue == nil || item.issue == issue) { retry(item) }
+        if let pick = playlist, pick.issue != nil, issue == nil || pick.issue == issue { loadPlaylist(PlaylistPick(url: pick.url)) }
+    }
+
+    func retry(_ item: DownloadItem) {
+        guard item.failed else { return }
+        item.status = .waiting
+        item.issue = nil
+        item.lastError = nil
+        item.progress = 0
+        item.stage = .start
+        startNext()
+    }
+
+    /// Sign-in fix: borrow the browser's YouTube cookies, then retry what sign-in stopped.
+    func useBrowser(_ browser: YTMusic.Browser) {
+        self.browser = browser
+        showsFix = false
+        retryFailed(.signIn)
+        retryFailed(.cookieAccess)
+    }
+
+    /// Opens System Settings at Full Disk Access, which Safari's cookies need.
+    func openFullDiskAccess() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+    }
+
+    /// Missing-tool fix: brew install yt-dlp ffmpeg, then retry. Without Homebrew, opens brew.sh.
+    func installTools() {
+        guard let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].first(where: FileManager.default.isExecutableFile) else {
+            NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: brew)
+        process.arguments = ["install", "yt-dlp", "ffmpeg"]
+        process.environment = Self.environment
+        process.terminationHandler = { _ in
+            Task { @MainActor in
+                self.installing = false
+                self.showsFix = false
+                self.retryFailed(.missingTool)
+            }
+        }
+        do {
+            try process.run()
+            installing = true
+        } catch {
+            NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
+        }
     }
 
     /// Menu bar quick action: queues the link on the clipboard without showing the window.
@@ -135,21 +259,72 @@ final class MusicQueue {
         start(next)
     }
 
-    private func start(_ item: DownloadItem) {
-        guard let tool = ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"].first(where: FileManager.default.isExecutableFile) else {
-            item.status = .failed(Self.installHint)
-            startNext()
-            return
+    private func loadPlaylist(_ pick: PlaylistPick) {
+        closePlaylist()
+        playlist = pick
+        guard startsDownloads else { return }
+        do {
+            pick.process = try Self.launch(YTMusic.playlistArguments(url: pick.url, browser: browser)) { line in
+                if let entry = YTMusic.parseEntry(line) {
+                    pick.entries.append(entry)
+                    pick.chosen.insert(entry.id)
+                } else if case .error(let message) = YTMusic.parse(line) {
+                    pick.lastError = message
+                }
+            } exited: { code in
+                pick.loading = false
+                pick.process = nil
+                guard code != 0 || pick.entries.isEmpty else { return }
+                pick.error = pick.lastError.map(YTMusic.plainError) ?? "yt-dlp found no songs (code \(code))."
+                pick.issue = pick.lastError.flatMap(YTMusic.issue(in:))
+            }
+        } catch {
+            pick.loading = false
+            pick.error = error.localizedDescription
+            pick.issue = (error as? LaunchError) == .missingTool ? .missingTool : nil
         }
+    }
+
+    private func start(_ item: DownloadItem) {
         try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = YTMusic.arguments(url: item.url, folder: folder,
-                                              temp: FileManager.default.temporaryDirectory.appending(path: "yt-music").path)
-        // Apps start without the login shell PATH; yt-dlp needs ffmpeg from Homebrew.
+        let arguments = YTMusic.arguments(url: item.url, folder: folder,
+                                          temp: FileManager.default.temporaryDirectory.appending(path: "yt-music").path,
+                                          browser: browser)
+        item.log.append("$ yt-dlp " + arguments.joined(separator: " "))
+        do {
+            item.process = try Self.launch(arguments) { self.handle($0, for: item) } exited: { self.finished(item, code: $0) }
+            item.status = .downloading
+            item.stage = .info
+        } catch {
+            item.status = .failed(error.localizedDescription)
+            item.issue = (error as? LaunchError) == .missingTool ? .missingTool : nil
+            startNext()
+        }
+    }
+
+    private enum LaunchError: LocalizedError {
+        case missingTool
+
+        var errorDescription: String? { MusicQueue.installHint }
+    }
+
+    /// Apps start without the login shell PATH; yt-dlp needs ffmpeg from Homebrew.
+    private static var environment: [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
-        process.environment = env
+        return env
+    }
+
+    /// Runs yt-dlp and hands each output line, then the exit code, to the main thread.
+    private static func launch(_ arguments: [String], line: @escaping @MainActor (String) -> Void,
+                               exited: @escaping @MainActor (Int32) -> Void) throws -> Process {
+        guard let tool = ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"].first(where: FileManager.default.isExecutableFile) else {
+            throw LaunchError.missingTool
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        process.environment = environment
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -157,25 +332,17 @@ final class MusicQueue {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let found = lines.append(handle.availableData)
             guard !found.isEmpty else { return }
-            Task { @MainActor in found.forEach { self.handle($0, for: item) } }
+            Task { @MainActor in found.forEach(line) }
         }
         process.terminationHandler = { process in
             let code = process.terminationStatus
             Task { @MainActor in
                 pipe.fileHandleForReading.readabilityHandler = nil
-                self.finished(item, code: code)
+                exited(code)
             }
         }
-        item.log.append("$ yt-dlp " + (process.arguments ?? []).joined(separator: " "))
-        do {
-            try process.run()
-            item.process = process
-            item.status = .downloading
-            item.stage = .info
-        } catch {
-            item.status = .failed("Could not start yt-dlp: \(error.localizedDescription)")
-            startNext()
-        }
+        try process.run()
+        return process
     }
 
     private func handle(_ line: String, for item: DownloadItem) {
@@ -209,6 +376,7 @@ final class MusicQueue {
             item.progress = 1
         } else {
             item.status = .failed(item.lastError.map(YTMusic.plainError) ?? "yt-dlp stopped with code \(code)")
+            item.issue = item.lastError.flatMap(YTMusic.issue(in:))
         }
         startNext()
     }

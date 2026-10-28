@@ -1,4 +1,5 @@
 import SwiftUI
+import AntHillKit
 
 /// The Settings window (Command-Comma). One tab per topic, at most about
 /// six. Each tab is a grouped Form that sizes to its content, so the
@@ -80,6 +81,11 @@ struct GeneralSettings: View {
                         .help(model.music.folder)
                     Button("Change…") { model.music.chooseFolder() }
                 }
+            }
+            @Bindable var music = model.music
+            Picker("Use YouTube sign-in from", selection: $music.browser) {
+                Text("No Browser").tag(YTMusic.Browser?.none)
+                ForEach(model.music.installedBrowsers) { Text($0.title).tag(Optional($0)) }
             }
         }
     }

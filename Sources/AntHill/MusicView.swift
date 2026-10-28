@@ -11,9 +11,10 @@ struct MusicView: View {
     private var queue: MusicQueue { model.music }
 
     var body: some View {
+        @Bindable var queue = queue
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: Space.md) {
-                TextField("Paste a YouTube link and press Return", text: $link)
+                TextField("Paste a YouTube or playlist link and press Return", text: $link)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.large)
                     .focused($fieldFocused)
@@ -40,6 +41,19 @@ struct MusicView: View {
             list
         }
         .navigationTitle(Module.ytMusic.title)
+        .toolbar {
+            if let issue = queue.issue {
+                // Beside the page title: one fix for every song the problem stopped.
+                ToolbarItem(placement: .navigation) {
+                    Button(issue.fixTitle, systemImage: "exclamationmark.triangle.fill") { queue.showsFix.toggle() }
+                        .labelStyle(.titleAndIcon)
+                        .tint(.orange)
+                        .help("Fix the problem that stops downloads")
+                        .popover(isPresented: $queue.showsFix, arrowEdge: .bottom) { IssueFixView(issue: issue) }
+                }
+            }
+        }
+        .sheet(item: $queue.playlist) { PlaylistSheet(pick: $0) }
     }
 
     private var list: some View {
@@ -48,6 +62,7 @@ struct MusicView: View {
                 .contextMenu {
                     if item.status == .done { Button("Show in Finder") { queue.reveal(item) } }
                     if item.canPause { Button(item.status == .paused ? "Resume" : "Pause") { queue.togglePause(item) } }
+                    if item.failed { Button("Retry") { queue.retry(item) } }
                     Button("Remove") { queue.remove(item) }
                 }
         }
@@ -87,6 +102,12 @@ struct DownloadRow: View {
                 }
             }
             Spacer(minLength: Space.sm)
+            if item.failed {
+                Button("Retry", systemImage: "arrow.clockwise") { model.music.retry(item) }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help(item.issue.map { "Retry. \($0.fixTitle) first, with the button beside the title." } ?? "Retry")
+            }
             if item.canPause {
                 Button(item.status == .paused ? "Resume" : "Pause",
                        systemImage: item.status == .paused ? "play.fill" : "pause.fill") {
