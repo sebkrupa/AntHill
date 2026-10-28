@@ -136,10 +136,10 @@ final class MusicLibrary {
                 switch change.kind {
                 case .edit(let name, let artist, let album):
                     try Self.music("""
-                        set song to \(track)
-                        set name of song to \(Library.appleScript(name))
-                        set artist of song to \(Library.appleScript(artist))
-                        set album of song to \(Library.appleScript(album))
+                        set theTrack to \(track)
+                        set name of theTrack to \(Library.appleScript(name))
+                        set artist of theTrack to \(Library.appleScript(artist))
+                        set album of theTrack to \(Library.appleScript(album))
                         """)
                 case .trash:
                     let path = try Self.music("POSIX path of (location of \(track))").stringValue ?? ""
