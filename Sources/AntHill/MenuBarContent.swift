@@ -15,7 +15,8 @@ struct MenuBarContent: View {
         }
         Divider()
         if let release = model.updates.available {
-            Button("Download AntHill \(release.version)…") { model.updates.download() }
+            Button(model.updates.installing ? "Installing AntHill \(release.version)…" : "Install AntHill \(release.version) and Relaunch") { model.updates.install() }
+                .disabled(model.updates.installing)
         }
         Button("Open AntHill") {
             // Back in the Dock first, or the window opens behind other apps.

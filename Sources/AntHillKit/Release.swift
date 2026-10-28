@@ -6,21 +6,30 @@ public struct Release: Decodable, Equatable, Sendable {
     public let version: String
     /// The release page, with the download and the notes.
     public let page: URL
+    /// The zipped app the release workflow attaches, when there is one.
+    public let zip: URL?
 
     /// The newest release. GitHub leaves out drafts and pre-releases.
     public static let latestURL = URL(string: "https://api.github.com/repos/sebkrupa/AntHill/releases/latest")!
 
-    public init(version: String, page: URL) {
+    public init(version: String, page: URL, zip: URL? = nil) {
         self.version = version
         self.page = page
+        self.zip = zip
     }
 
-    enum CodingKeys: String, CodingKey { case tag = "tag_name", page = "html_url" }
+    enum CodingKeys: String, CodingKey { case tag = "tag_name", page = "html_url", assets }
+    private struct Asset: Decodable {
+        let name: String
+        let browser_download_url: URL
+    }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = String(try values.decode(String.self, forKey: .tag).trimmingPrefix("v"))
         page = try values.decode(URL.self, forKey: .page)
+        let assets = try values.decodeIfPresent([Asset].self, forKey: .assets) ?? []
+        zip = assets.first { $0.name.hasSuffix(".zip") }?.browser_download_url
     }
 
     /// True when `version` is newer than `current`, number by number: 1.10.0 is newer than 1.9.2, 1.2 equals 1.2.0.

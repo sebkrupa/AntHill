@@ -20,4 +20,11 @@ func comparesVersions(_ version: String, _ current: String, newer: Bool) {
     let release = try JSONDecoder().decode(Release.self, from: Data(json.utf8))
     #expect(release.version == "1.2.0")
     #expect(release.page.absoluteString.hasSuffix("/v1.2.0"))
+    #expect(release.zip == nil)
+}
+
+@Test func findsTheZippedApp() throws {
+    let json = #"{"tag_name": "v1.2.0", "html_url": "https://github.com/x", "assets": [{"name": "notes.txt", "browser_download_url": "https://github.com/a/notes.txt"}, {"name": "AntHill-1.2.0.zip", "browser_download_url": "https://github.com/a/AntHill-1.2.0.zip"}]}"#
+    let release = try JSONDecoder().decode(Release.self, from: Data(json.utf8))
+    #expect(release.zip?.lastPathComponent == "AntHill-1.2.0.zip")
 }
