@@ -51,6 +51,59 @@ struct AntHillApp: App {
                 Button("Retry Failed") { model.music.retryFailed() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(!model.music.hasFailed)
+                Divider()
+                Button("Show Downloads") {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .downloads
+                }
+                .keyboardShortcut("1", modifiers: [.command, .option])
+                Button("Show Library") {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .library
+                }
+                .keyboardShortcut("2", modifiers: [.command, .option])
+                .disabled(!model.llama.available)
+                Button("Run \(model.library.task.title)") {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .library
+                    model.library.start(with: model.llama)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(!model.llama.available || model.library.running || model.library.tracks.isEmpty)
+                Button("Stop Library Task") { model.library.stop() }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!model.library.running)
+            }
+            CommandMenu("Shop Check") {
+                Button("Check Again") {
+                    model.sidebar = .shopCheck
+                    model.shopChecks.checkAgain()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(model.shopChecks.selected == nil || model.shopChecks.running != nil)
+                Button("Remove Report") {
+                    if let id = model.shopChecks.selection { model.shopChecks.remove(id) }
+                }
+                .keyboardShortcut(.delete, modifiers: [.command, .option])
+                .disabled(model.shopChecks.selected == nil)
+                Button("Clear History…") {
+                    model.sidebar = .shopCheck
+                    model.shopChecks.confirmsClear = true
+                }
+                .keyboardShortcut(.delete, modifiers: [.command, .shift])
+                .disabled(model.shopChecks.reports.isEmpty)
+            }
+            CommandMenu("Network") {
+                Button(model.network.paused ? "Resume Updates" : "Pause Updates") {
+                    model.sidebar = .network
+                    model.network.paused.toggle()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Refresh Now") {
+                    model.sidebar = .network
+                    Task { await model.network.refresh() }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .option])
             }
         }
 

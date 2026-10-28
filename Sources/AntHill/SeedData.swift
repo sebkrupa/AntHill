@@ -12,6 +12,46 @@ enum SeedData {
         "Björk - Jóga", "Air - La femme d'argent", "Bonobo - Kerala",
     ].enumerated().map { .init(id: "sample\($0.offset)", title: $0.element) }
 
+    static let tracks: [Library.Track] = [
+        .init(id: "T1", name: "One More Time", artist: "Daft Punk", album: "Discovery", duration: 320),
+        .init(id: "T2", name: "Daft Punk - One More Time (Official Video)", artist: "", album: "", duration: 322),
+        .init(id: "T3", name: "Dreams (2004 Remaster)", artist: "Fleetwood Mac", album: "", duration: 257),
+        .init(id: "T4", name: "Teardrop", artist: "Unknown Artist", album: "", duration: 330),
+        .init(id: "T5", name: "Feeling Good", artist: "Nina Simone", album: "I Put a Spell on You", duration: 177),
+    ]
+
+    static let changes: [Library.Change] = [
+        .init(track: tracks[1], kind: .trash(keeping: tracks[0])),
+        .init(track: tracks[2], kind: .edit(name: "Dreams", artist: "Fleetwood Mac", album: "Rumours")),
+        .init(track: tracks[3], kind: .edit(name: "Teardrop", artist: "Massive Attack", album: "Mezzanine")),
+    ]
+
+    static let shopReports: [ShopCheck.Report] = [
+        .init(domain: "nike-outlet.shop", date: .now, findings: [
+            .init(kind: .bad, points: 3, text: "The domain is new: registered 2026-09-30 (28 days ago)."),
+            .init(kind: .bad, points: 3, text: "No NIP or KRS on the site. Nobody knows who runs the shop."),
+            .init(kind: .bad, points: 2, text: "The domain has the brand “nike”, but it is not the brand’s own domain."),
+            .init(kind: .bad, points: 1, text: "Time pressure on the site (“countdown”)."),
+            .init(kind: .ok, points: 0, text: "The domain is not on the CERT Polska warning list."),
+            .init(kind: .info, points: 0, text: "The site has HTTPS (the padlock). That is only encryption, no proof the shop is honest."),
+        ], hints: [
+            .init(text: "Product photos: search by image in Google Lens, TinEye, or Yandex Images.", url: nil),
+            .init(text: "Reviews outside the shop: Trustpilot", url: URL(string: "https://www.trustpilot.com/review/nike-outlet.shop")),
+        ]),
+        .init(domain: "kowalski.pl", date: .now.addingTimeInterval(-86_400), findings: [
+            .init(kind: .ok, points: 0, text: "Domain registered 2012-03-01."),
+            .init(kind: .ok, points: 0, text: "Company in the VAT white list: SKLEP KOWALSKI SP. Z O.O., NIP 9562307719, status Czynny."),
+        ], hints: []),
+    ]
+
+    static let connections: [Network.Connection] = [
+        .init(pid: 1200, command: "ollama", fd: "3", family: "IPv4", proto: "TCP", local: "127.0.0.1:11434", remote: "", state: "LISTEN"),
+        .init(pid: 1200, command: "ollama", fd: "12", family: "IPv4", proto: "TCP", local: "127.0.0.1:11434", remote: "127.0.0.1:52344", state: "ESTABLISHED"),
+        .init(pid: 1200, command: "ollama", fd: "14", family: "IPv6", proto: "TCP", local: "[2a02:a311::5]:52390", remote: "[2606:4700::6810:84e5]:443", state: "ESTABLISHED"),
+        .init(pid: 1214, command: "ollama runner", fd: "8", family: "IPv4", proto: "TCP", local: "127.0.0.1:52331", remote: "127.0.0.1:11434", state: "CLOSE_WAIT"),
+        .init(pid: 618, command: "ControlCenter", fd: "9", family: "IPv4", proto: "TCP", local: "*:7000", remote: "", state: "LISTEN"),
+    ]
+
     static func insertIfRequested(into model: AppModel) {
         guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
         guard Store.isOverridden else {
@@ -48,5 +88,12 @@ enum SeedData {
         converting.log = ["[youtube] Extracting URL", "[download] 100% of 182.40MiB",
                           "[ExtractAudio] Destination: Find Your Focus.m4a"]
         model.music.insertSample(converting)
+        model.llama.models = ["qwen3-8b"]
+        model.llama.model = "qwen3-8b"
+        model.llama.status = .connected
+        model.library.insertSample(tracks)
+        for report in shopReports.reversed() { model.shopChecks.add(report) }
+        model.network.name = "ollama"
+        model.network.insertSample(connections)
     }
 }

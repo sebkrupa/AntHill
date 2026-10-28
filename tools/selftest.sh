@@ -3,5 +3,5 @@
 set -u
 source ${0:A:h}/test-app.sh
 store=/tmp/AntHill-self.store
-rm -f $store $store-shm $store-wal
+rm -f $store $store-shm $store-wal $store-shop-checks.json
 APP_STORE=$store $app --selftest

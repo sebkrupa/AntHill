@@ -15,7 +15,8 @@ struct MenuBarContent: View {
         }
         Divider()
         if let release = model.updates.available {
-            Button("Download AntHill \(release.version)…") { model.updates.download() }
+            Button(model.updates.installing ? "Installing AntHill \(release.version)…" : "Install AntHill \(release.version) and Relaunch") { model.updates.install() }
+                .disabled(model.updates.installing)
         }
         Button("Open AntHill") {
             // Back in the Dock first, or the window opens behind other apps.
@@ -44,6 +45,14 @@ struct ModuleMenu: View {
         switch module {
         case .ytMusic:
             Button("Paste Link") { model.music.addFromClipboard() }
+        case .shopCheck:
+            Button("Check Copied Address") {
+                model.sidebar = .shopCheck
+                model.shopChecks.check(NSPasteboard.general.string(forType: .string) ?? "")
+            }
+            .disabled(model.shopChecks.running != nil)
+        case .network:
+            Button(model.network.paused ? "Resume Updates" : "Pause Updates") { model.network.paused.toggle() }
         }
     }
 }

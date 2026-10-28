@@ -4,20 +4,33 @@ import Foundation
 /// A new module: add a case here and its view in `ModuleView`.
 enum Module: String, CaseIterable, Identifiable {
     case ytMusic = "yt-music"
+    case shopCheck = "shop-check"
+    case network = "network"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .ytMusic: "YT-Music"
+        case .shopCheck: "eCommerce Security Check"
+        case .network: "Network Monitor"
         }
     }
 
     var symbol: String {
         switch self {
         case .ytMusic: "music.note"
+        case .shopCheck: "checkmark.shield"
+        case .network: "network"
         }
     }
+}
+
+enum MusicPage: String, CaseIterable, Identifiable {
+    case downloads, library
+
+    var id: String { rawValue }
+    var title: String { self == .downloads ? "Downloads" : "Library" }
 }
 
 /// App-wide state that menus, toolbars, and views share.
@@ -38,12 +51,24 @@ final class AppModel {
         didSet { Self.defaults.set(Array(menuBarHidden), forKey: "menuBar.hidden") }
     }
     let music = MusicQueue(defaults: defaults, history: Store.history)
+    let llama = LlamaConnection(defaults: defaults)
+    let library = MusicLibrary()
+    let shopChecks = ShopChecks(history: Store.shopChecks)
+    let network = NetworkWatch(defaults: defaults)
+    /// The YT-Music page: the download queue, or the Music library the model works on.
+    var musicPage: MusicPage = .downloads
     let updates = Updates(defaults: defaults)
 
     init() {
         // Test runs must not reach GitHub or show alerts.
-        if !Store.isOverridden { updates.checkDaily() }
+        if !Store.isOverridden {
+            updates.checkDaily()
+            Task { await llama.refresh() }
+        }
     }
+
+    /// The page shown: Library only while the model is available.
+    var shownMusicPage: MusicPage { llama.available ? musicPage : .downloads }
 
     var menuBarModules: [Module] { Module.allCases.filter { !menuBarHidden.contains($0.rawValue) } }
 }
@@ -58,5 +83,11 @@ enum Store {
     static var history: URL {
         if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]!) }
         return URL.applicationSupportDirectory.appending(path: "AntHill/history.json")
+    }
+
+    /// The eCommerce Security Check reports, kept until the person clears them.
+    static var shopChecks: URL {
+        if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]! + "-shop-checks.json") }
+        return URL.applicationSupportDirectory.appending(path: "AntHill/shop-checks.json")
     }
 }

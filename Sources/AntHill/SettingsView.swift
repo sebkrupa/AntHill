@@ -24,6 +24,7 @@ struct SettingsView: View {
         Form {
             switch tab {
             case .general: GeneralSettings()
+            case .models: ModelSettings()
             case .appearance: AppearanceSettings()
             }
         }
@@ -35,13 +36,14 @@ struct SettingsView: View {
 
 /// The Settings tabs. Snapshot mode walks through every case.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, appearance
+    case general, models, appearance
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .general: "General"
+        case .models: "Models"
         case .appearance: "Appearance"
         }
     }
@@ -49,6 +51,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
+        case .models: "cpu"
         case .appearance: "paintpalette"
         }
     }
@@ -87,6 +90,49 @@ struct GeneralSettings: View {
                 Text("No Browser").tag(YTMusic.Browser?.none)
                 ForEach(model.music.installedBrowsers) { Text($0.title).tag(Optional($0)) }
             }
+        }
+    }
+}
+
+/// The local llama.cpp server and the model the YT-Music Library tab asks.
+struct ModelSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var llama = model.llama
+        Section {
+            TextField("Server address", text: $llama.address, prompt: Text(Llama.defaultAddress))
+                .onSubmit { Task { await llama.refresh() } }
+            LabeledContent("Status") {
+                HStack(spacing: Space.sm) {
+                    status
+                    Button("Check Again") { Task { await llama.refresh() } }
+                        .disabled(llama.status == .checking)
+                }
+            }
+            Picker("Model", selection: $llama.model) {
+                Text("None").tag(String?.none)
+                // The saved model stays listed while the server is away.
+                ForEach(Set(llama.models + [llama.model].compactMap { $0 }).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+            }
+            .disabled(llama.models.isEmpty)
+        } header: {
+            Text("llama.cpp")
+        } footer: {
+            Text("Start the server with llama-server -m model.gguf --port 8080. With a model chosen, YT-Music shows a Library tab.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch model.llama.status {
+        case .unknown: Text("Not checked").foregroundStyle(.secondary)
+        case .checking: ProgressView().controlSize(.small)
+        case .connected:
+            Label(model.llama.available ? "Connected" : "Connected, choose a model", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(model.llama.available ? .green : .orange)
+        case .failed(let message):
+            Label("Not connected", systemImage: "xmark.circle.fill").foregroundStyle(.red).help(message)
         }
     }
 }

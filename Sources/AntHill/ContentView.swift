@@ -9,6 +9,7 @@ struct ContentView: View {
         NavigationSplitView {
             List(Module.allCases, selection: $model.sidebar) { module in
                 Label(module.title, systemImage: module.symbol)
+                    .help(module.title)
                     .tag(module)
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 212)
@@ -30,6 +31,8 @@ struct ModuleView: View {
     var body: some View {
         switch module {
         case .ytMusic: MusicView()
+        case .shopCheck: ShopCheckView()
+        case .network: NetworkView()
         }
     }
 }
