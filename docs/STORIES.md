@@ -108,6 +108,34 @@ Acceptance:
 - [snap] The row is Failed: "yt-dlp not found. Install: brew install yt-dlp ffmpeg".
 Status: done
 
+## M2 Filesfer: copy, move, or zip files
+
+### S-020 Save a transfer job
+As the user, I pick FROM (a file or folder), WHERE, Copy / Cut / Zip and Copy, and what happens when a file exists.
+Acceptance:
+- [selftest] Jobs and their last result survive a restart.
+- [unit] Save is refused when WHERE is inside FROM, FROM and WHERE are the same, FROM is already in WHERE, or the regex is not valid.
+Status: done
+
+### S-021 Take only some files
+As the user, I take the whole folder, or files by regex, file names, or extensions, from every subfolder.
+Acceptance:
+- [unit] Filters ignore case, keep the subfolder structure, and never match hidden files. Whole Folder skips .DS_Store and other clutter.
+- [snap] Each row shows how many files match and their size.
+Status: done
+
+### S-022 Run one job or all, and see progress
+Acceptance:
+- [selftest] Copy, Keep Both ("a 2.txt"), Overwrite, Cut (empty folders removed), and Zip and Copy work with real rsync.
+- [snap] A running row shows a progress bar, percent, and time left (Homebrew rsync).
+Status: done
+
+### S-023 Run jobs on a schedule
+Acceptance:
+- [selftest] Missed runs run once. A job whose drive is away shows "Waiting for <drive>" and runs when it connects.
+- A failed scheduled run sends a notification.
+Status: done
+
 ## Later
 - Video download module (`download.sh`).
 - Keep the queue between launches.

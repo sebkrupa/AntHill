@@ -114,6 +114,40 @@ struct AntHillApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command, .option])
             }
+            CommandMenu("Filesfer") {
+                Button("New Job…") {
+                    model.sidebar = .filesfer
+                    model.transfers.newJob()
+                }
+                .keyboardShortcut("n")
+                Button("Edit Job…") {
+                    if let id = model.transfers.selection { model.transfers.edit(id) }
+                }
+                .keyboardShortcut("e")
+                .disabled(model.sidebar != .filesfer || model.transfers.selection == nil)
+                Divider()
+                Button("Run Selected") {
+                    if let id = model.transfers.selection { model.transfers.run(id) }
+                }
+                .keyboardShortcut(.return)
+                .disabled(model.sidebar != .filesfer || model.transfers.selection.map(model.transfers.isBusy) != false)
+                Button("Run All") {
+                    model.sidebar = .filesfer
+                    model.transfers.runAll()
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .disabled(model.transfers.jobs.isEmpty)
+                Button("Stop") { model.transfers.stopAll() }
+                    .keyboardShortcut(".", modifiers: [.command, .shift])
+                    .disabled(!model.transfers.running)
+                Divider()
+                Button("Delete Job") {
+                    if let id = model.transfers.selection { model.transfers.remove(id) }
+                }
+                // Plain Delete works in the list; the menu needs Command, or typing in the sheet would delete the job.
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(model.sidebar != .filesfer || model.transfers.selection == nil)
+            }
         }
 
         // The menu bar icon stays while the window is closed; Quit lives here.
@@ -159,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
         Self.model?.music.stopAll()
+        Self.model?.transfers.stopAll()
         if SelfTest.requested { exit(SelfTest.exitCode) }
     }
 }

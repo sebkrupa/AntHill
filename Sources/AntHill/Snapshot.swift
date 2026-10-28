@@ -74,7 +74,9 @@ enum Snapshot {
                 pick.loading = false
                 model.library.changes = SeedData.changes
                 model.library.chosen = Set(SeedData.changes.map(\.id))
-                let panels: [(String, AnyView)] = [("playlist", AnyView(PlaylistSheet(pick: pick))), ("review", AnyView(ReviewSheet()))]
+                let panels: [(String, AnyView)] = [("playlist", AnyView(PlaylistSheet(pick: pick))), ("review", AnyView(ReviewSheet())),
+                                                   ("filesfer-job", AnyView(JobSheet(job: SeedData.jobs[1]))),
+                                                   ("filesfer-new", AnyView(JobSheet(job: Filesfer.Job())))]
                     + [YTMusic.Issue.signIn, .cookieAccess, .missingTool].map { ("fix-\($0)", AnyView(IssueFixView(issue: $0))) }
                 for mode in ["light", "dark"] {
                     NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)

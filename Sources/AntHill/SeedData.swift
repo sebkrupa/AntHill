@@ -52,6 +52,32 @@ enum SeedData {
         .init(pid: 618, command: "ControlCenter", fd: "9", family: "IPv4", proto: "TCP", local: "*:7000", remote: "", state: "LISTEN"),
     ]
 
+    static let jobs: [Filesfer.Job] = {
+        func job(_ from: String, _ to: String, _ operation: Filesfer.Operation, _ selection: Filesfer.Selection = .whole,
+                 _ pattern: String = "", _ schedule: Filesfer.Schedule.Kind = .off) -> Filesfer.Job {
+            var job = Filesfer.Job()
+            job.from = from
+            job.to = to
+            job.operation = operation
+            job.selection = selection
+            job.pattern = pattern
+            job.schedule.kind = schedule
+            return job
+        }
+        var photos = job("/Users/me/Pictures/Camera Roll", "/Volumes/Backup/Photos", .copy, .extensions, "jpg, heic, mov", .daily)
+        photos.name = "Camera Roll to Backup"
+        var invoices = job("/Users/me/Downloads", "/Users/me/Documents/Invoices", .cut, .regex, "^faktura.*\\.pdf$", .weekly)
+        invoices.last = .init(date: .now.addingTimeInterval(-3_600), files: 12, seconds: 4)
+        var projects = job("/Users/me/Projects/AntHill", "/Users/me/Archive", .zip)
+        projects.last = .init(date: .now.addingTimeInterval(-7_200), error: "rsync: [sender] send_files failed to open \"/Users/me/Projects/AntHill/notes.txt\": Operation not permitted (1)",
+                              permission: true, files: 0, seconds: 1)
+        var music = job("/Users/me/Music/Mixes", "/Volumes/Studio/Mixes", .copy, .whole, "", .hours)
+        music.conflict = .overwrite
+        // Due since an hour ago, but its drive is away.
+        music.anchor = .now.addingTimeInterval(-7 * 3_600)
+        return [photos, invoices, projects, music]
+    }()
+
     static func insertIfRequested(into model: AppModel) {
         guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
         guard Store.isOverridden else {
@@ -99,6 +125,11 @@ enum SeedData {
             "T5": .init(cleaned: false, log: "Checked: nothing to change"),
         ]
         for report in shopReports.reversed() { model.shopChecks.add(report) }
+        model.transfers.insertSample(jobs, previews: [
+            jobs[0].id: "1,284 files · 6.2 GB", jobs[1].id: "3 files · 840 KB",
+            jobs[2].id: "412 files · 96 MB", jobs[3].id: "Studio is not connected",
+        ], running: .init(id: jobs[0].id, scheduled: true, phase: "Copying", fraction: 0.45, remaining: 194),
+           waiting: [jobs[3].id: "Studio"])
         model.network.name = "ollama"
         model.network.insertSample(connections)
     }
