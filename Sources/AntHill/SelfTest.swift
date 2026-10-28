@@ -161,9 +161,102 @@ enum SelfTest {
             check("lsof reads this Mac's connections", watch.error == nil && !watch.apps.isEmpty, watch.error ?? "")
             watch.name = oldName
 
+            await filesfer(model.transfers)
+
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }
+    }
+
+    /// Real rsync, zip, and ditto runs on folders in /tmp.
+    private static func filesfer(_ transfers: Transfers) async {
+        let manager = FileManager.default
+        let root = "/tmp/AntHill-filesfer"
+        try? manager.removeItem(atPath: root)
+        func write(_ path: String, _ text: String) {
+            try? manager.createDirectory(atPath: (root + "/" + path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            try? Data(text.utf8).write(to: URL(fileURLWithPath: root + "/" + path))
+        }
+        func exists(_ path: String) -> Bool { manager.fileExists(atPath: root + "/" + path) }
+        func read(_ path: String) -> String { (try? String(contentsOfFile: root + "/" + path, encoding: .utf8)) ?? "" }
+        func run(_ job: Filesfer.Job) async -> Filesfer.Outcome? {
+            transfers.commit(job)
+            transfers.run(job.id)
+            for _ in 0..<100 where transfers.running { try? await Task.sleep(for: .seconds(0.1)) }
+            return transfers.job(job.id)?.last
+        }
+        write("src/a.txt", "one")
+        write("src/sub/b.jpg", "photo")
+        write("src/.DS_Store", "x")
+
+        var copy = Filesfer.Job()
+        copy.from = root + "/src"
+        copy.to = root + "/out"
+        let first = await run(copy)
+        check("Copy takes the whole folder into WHERE/<folder>, without .DS_Store",
+              first?.error == nil && first?.files == 2 && read("out/src/a.txt") == "one" && exists("out/src/sub/b.jpg") && !exists("out/src/.DS_Store"),
+              first?.error ?? "")
+        _ = await run(copy)
+        check("running again with the same files makes no copies", !exists("out/src/a 2.txt"))
+        write("src/a.txt", "two!")
+        _ = await run(copy)
+        check("Keep Both copies a changed file as “a 2.txt” and keeps the old one",
+              read("out/src/a 2.txt") == "two!" && read("out/src/a.txt") == "one")
+        copy.conflict = .overwrite
+        _ = await run(copy)
+        check("Overwrite replaces the file", read("out/src/a.txt") == "two!" && !exists("out/src/a 3.txt"))
+
+        var cut = Filesfer.Job()
+        cut.from = root + "/src"
+        cut.to = root + "/moved"
+        cut.operation = .cut
+        cut.selection = .extensions
+        cut.pattern = "JPG"
+        let moved = await run(cut)
+        check("Cut with a filter moves only matching files and removes the folders left empty",
+              moved?.error == nil && exists("moved/src/sub/b.jpg") && !exists("src/sub") && exists("src/a.txt"), moved?.error ?? "")
+
+        var zip = Filesfer.Job()
+        zip.from = root + "/src"
+        zip.to = root + "/zips"
+        zip.operation = .zip
+        let name = Filesfer.zipName(from: zip.from, isFolder: true, date: .now)
+        _ = await run(zip)
+        _ = await run(zip)
+        check("Zip and Copy makes a dated zip, and a second one as “2”",
+              exists("zips/" + name) && exists("zips/" + name.replacingOccurrences(of: ".zip", with: " 2.zip")))
+
+        let before = manager.fileExists(atPath: root + "/out/src/a.txt")
+        var due = copy
+        due.schedule.kind = .daily
+        transfers.commit(due)
+        if let index = transfers.jobs.firstIndex(where: { $0.id == due.id }) {
+            // Pretend the app was closed for three days.
+            due.anchor = .now.addingTimeInterval(-3 * 86_400)
+            transfers.insertSample(transfers.jobs.enumerated().map { $0.offset == index ? due : $0.element },
+                                   previews: transfers.previews, running: nil, waiting: [:])
+        }
+        transfers.tick()
+        let queued = transfers.isBusy(due.id)
+        for _ in 0..<100 where transfers.running { try? await Task.sleep(for: .seconds(0.1)) }
+        transfers.tick()
+        check("missed scheduled runs run once", before && queued && !transfers.isBusy(due.id))
+
+        var away = copy
+        away.id = UUID()
+        away.to = "/Volumes/AntHill-No-Such-Disk/out"
+        away.schedule.kind = .hours
+        transfers.commit(away)
+        transfers.insertSample(transfers.jobs.map { $0.id == away.id ? { var job = $0; job.anchor = .distantPast; return job }($0) : $0 },
+                               previews: transfers.previews, running: nil, waiting: [:])
+        transfers.tick()
+        check("a scheduled job waits for its drive", transfers.waitingForDisk[away.id] == "AntHill-No-Such-Disk" && !transfers.isBusy(away.id))
+
+        let reopened = Transfers(history: Store.filesfer)
+        check("jobs and their last result survive a restart",
+              reopened.jobs.map(\.id) == transfers.jobs.map(\.id) && reopened.job(copy.id)?.last?.error == nil && reopened.job(copy.id)?.last != nil)
+        for job in transfers.jobs { transfers.remove(job.id) }
+        check("deleting a job takes it out of the saved list", Transfers(history: Store.filesfer).jobs.isEmpty)
     }
 
     private static func check(_ name: String, _ ok: Bool, _ detail: String = "") {

@@ -53,6 +53,12 @@ struct ModuleMenu: View {
             .disabled(model.shopChecks.running != nil)
         case .network:
             Button(model.network.paused ? "Resume Updates" : "Pause Updates") { model.network.paused.toggle() }
+        case .filesfer:
+            if let status = model.transfers.status { Text(status) }
+            Button("Run All") { model.transfers.runAll() }
+                .disabled(model.transfers.jobs.isEmpty)
+            Button("Stop") { model.transfers.stopAll() }
+                .disabled(!model.transfers.running)
         }
     }
 }

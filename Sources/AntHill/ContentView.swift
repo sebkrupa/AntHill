@@ -33,6 +33,7 @@ struct ModuleView: View {
         case .ytMusic: MusicView()
         case .shopCheck: ShopCheckView()
         case .network: NetworkView()
+        case .filesfer: FilesferView()
         }
     }
 }

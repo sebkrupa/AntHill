@@ -6,6 +6,7 @@ enum Module: String, CaseIterable, Identifiable {
     case ytMusic = "yt-music"
     case shopCheck = "shop-check"
     case network = "network"
+    case filesfer = "filesfer"
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .ytMusic: "YT-Music"
         case .shopCheck: "eCommerce Security Check"
         case .network: "Network Monitor"
+        case .filesfer: "Filesfer"
         }
     }
 
@@ -22,6 +24,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .ytMusic: "music.note"
         case .shopCheck: "checkmark.shield"
         case .network: "network"
+        case .filesfer: "arrow.left.arrow.right.square"
         }
     }
 }
@@ -55,6 +58,7 @@ final class AppModel {
     let library = MusicLibrary()
     let shopChecks = ShopChecks(history: Store.shopChecks)
     let network = NetworkWatch(defaults: defaults)
+    let transfers = Transfers(history: Store.filesfer)
     /// The YT-Music page: the download queue, or the Music library the model works on.
     var musicPage: MusicPage = .downloads
     let updates = Updates(defaults: defaults)
@@ -86,5 +90,11 @@ enum Store {
     static var shopChecks: URL {
         if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]! + "-shop-checks.json") }
         return URL.applicationSupportDirectory.appending(path: "AntHill/shop-checks.json")
+    }
+
+    /// The Filesfer jobs and how each last run ended.
+    static var filesfer: URL {
+        if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]! + "-filesfer.json") }
+        return URL.applicationSupportDirectory.appending(path: "AntHill/filesfer.json")
     }
 }

@@ -439,15 +439,19 @@ final class MusicQueue {
 }
 
 /// Splits pipe data into lines; called from the pipe's background queue.
-private nonisolated final class LineBuffer: @unchecked Sendable {
+/// rsync ends its progress lines with a carriage return, so Filesfer splits on both.
+nonisolated final class LineBuffer: @unchecked Sendable {
     private var pending = Data()
     private let lock = NSLock()
+    private let ends: Set<UInt8>
+
+    init(ends: Set<UInt8> = [0x0A]) { self.ends = ends }
 
     func append(_ data: Data) -> [String] {
         lock.withLock {
             pending.append(data)
             var lines: [String] = []
-            while let end = pending.firstIndex(of: 0x0A) {
+            while let end = pending.firstIndex(where: ends.contains) {
                 lines.append(String(decoding: pending[..<end], as: UTF8.self))
                 pending.removeSubrange(...end)
             }

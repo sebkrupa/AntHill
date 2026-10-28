@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 import AntHillKit
 
@@ -59,9 +60,25 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
+    @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         @Bindable var model = model
+        Section {
+            Toggle("Open at login", isOn: $opensAtLogin)
+                .onChange(of: opensAtLogin) { _, on in
+                    do {
+                        if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                    } catch {
+                        opensAtLogin = SMAppService.mainApp.status == .enabled
+                    }
+                }
+        } header: {
+            Text("Startup")
+        } footer: {
+            Text("Filesfer schedules run while AntHill is open. Closing the window keeps it open in the menu bar.")
+                .foregroundStyle(.secondary)
+        }
         Section("Menu Bar") {
             ForEach(Module.allCases) { module in
                 Toggle(isOn: Binding(
