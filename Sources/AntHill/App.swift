@@ -93,6 +93,18 @@ struct AntHillApp: App {
                 .keyboardShortcut(.delete, modifiers: [.command, .shift])
                 .disabled(model.shopChecks.reports.isEmpty)
             }
+            CommandMenu("Network") {
+                Button(model.network.paused ? "Resume Updates" : "Pause Updates") {
+                    model.sidebar = .network
+                    model.network.paused.toggle()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Refresh Now") {
+                    model.sidebar = .network
+                    Task { await model.network.refresh() }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+            }
         }
 
         // The menu bar icon stays while the window is closed; Quit lives here.

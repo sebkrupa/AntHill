@@ -51,6 +51,8 @@ struct ModuleMenu: View {
                 model.shopChecks.check(NSPasteboard.general.string(forType: .string) ?? "")
             }
             .disabled(model.shopChecks.running != nil)
+        case .network:
+            Button(model.network.paused ? "Resume Updates" : "Pause Updates") { model.network.paused.toggle() }
         }
     }
 }

@@ -139,6 +139,17 @@ enum SelfTest {
             shops.clearHistory()
             check("Clear History removes every saved report", ShopChecks(history: Store.shopChecks).reports.isEmpty)
 
+            let watch = model.network
+            let oldName = watch.name
+            watch.insertSample(SeedData.connections)
+            watch.name = "OLLAMA"
+            check("a typed app name shows its connections, ignoring case",
+                  watch.connections.count == 4 && watch.apps == ["ControlCenter", "ollama", "ollama runner"])
+            check("the watched app is saved", NetworkWatch(defaults: AppModel.defaults).name == "OLLAMA")
+            await watch.refresh()
+            check("lsof reads this Mac's connections", watch.error == nil && !watch.apps.isEmpty, watch.error ?? "")
+            watch.name = oldName
+
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }

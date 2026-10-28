@@ -32,6 +32,7 @@ struct ModuleView: View {
         switch module {
         case .ytMusic: MusicView()
         case .shopCheck: ShopCheckView()
+        case .network: NetworkView()
         }
     }
 }

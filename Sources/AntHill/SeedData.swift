@@ -44,6 +44,14 @@ enum SeedData {
         ], hints: []),
     ]
 
+    static let connections: [Network.Connection] = [
+        .init(pid: 1200, command: "ollama", fd: "3", family: "IPv4", proto: "TCP", local: "127.0.0.1:11434", remote: "", state: "LISTEN"),
+        .init(pid: 1200, command: "ollama", fd: "12", family: "IPv4", proto: "TCP", local: "127.0.0.1:11434", remote: "127.0.0.1:52344", state: "ESTABLISHED"),
+        .init(pid: 1200, command: "ollama", fd: "14", family: "IPv6", proto: "TCP", local: "[2a02:a311::5]:52390", remote: "[2606:4700::6810:84e5]:443", state: "ESTABLISHED"),
+        .init(pid: 1214, command: "ollama runner", fd: "8", family: "IPv4", proto: "TCP", local: "127.0.0.1:52331", remote: "127.0.0.1:11434", state: "CLOSE_WAIT"),
+        .init(pid: 618, command: "ControlCenter", fd: "9", family: "IPv4", proto: "TCP", local: "*:7000", remote: "", state: "LISTEN"),
+    ]
+
     static func insertIfRequested(into model: AppModel) {
         guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
         guard Store.isOverridden else {
@@ -85,5 +93,7 @@ enum SeedData {
         model.llama.status = .connected
         model.library.insertSample(tracks)
         for report in shopReports.reversed() { model.shopChecks.add(report) }
+        model.network.name = "ollama"
+        model.network.insertSample(connections)
     }
 }

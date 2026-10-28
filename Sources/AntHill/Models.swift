@@ -5,6 +5,7 @@ import Foundation
 enum Module: String, CaseIterable, Identifiable {
     case ytMusic = "yt-music"
     case shopCheck = "shop-check"
+    case network = "network"
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum Module: String, CaseIterable, Identifiable {
         switch self {
         case .ytMusic: "YT-Music"
         case .shopCheck: "eCommerce Security Check"
+        case .network: "Network Monitor"
         }
     }
 
@@ -19,6 +21,7 @@ enum Module: String, CaseIterable, Identifiable {
         switch self {
         case .ytMusic: "music.note"
         case .shopCheck: "checkmark.shield"
+        case .network: "network"
         }
     }
 }
@@ -51,6 +54,7 @@ final class AppModel {
     let llama = LlamaConnection(defaults: defaults)
     let library = MusicLibrary()
     let shopChecks = ShopChecks(history: Store.shopChecks)
+    let network = NetworkWatch(defaults: defaults)
     /// The YT-Music page: the download queue, or the Music library the model works on.
     var musicPage: MusicPage = .downloads
     let updates = Updates(defaults: defaults)
