@@ -51,6 +51,28 @@ struct AntHillApp: App {
                 Button("Retry Failed") { model.music.retryFailed() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(!model.music.hasFailed)
+                Divider()
+                Button("Show Downloads") {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .downloads
+                }
+                .keyboardShortcut("1", modifiers: [.command, .option])
+                Button("Show Library") {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .library
+                }
+                .keyboardShortcut("2", modifiers: [.command, .option])
+                .disabled(!model.llama.available)
+                Button("Run \(model.library.task.title)") {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .library
+                    model.library.start(with: model.llama)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(!model.llama.available || model.library.running || model.library.tracks.isEmpty)
+                Button("Stop Library Task") { model.library.stop() }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!model.library.running)
             }
         }
 

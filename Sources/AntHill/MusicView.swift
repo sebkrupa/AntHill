@@ -11,8 +11,27 @@ struct MusicView: View {
     private var queue: MusicQueue { model.music }
 
     var body: some View {
+        @Bindable var model = model
+        Group {
+            if model.shownMusicPage == .library { LibraryView() } else { downloads }
+        }
+        .navigationTitle(Module.ytMusic.title)
+        .toolbar {
+            if model.llama.available {
+                ToolbarItem(placement: .principal) {
+                    Picker("Page", selection: $model.musicPage) {
+                        ForEach(MusicPage.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+        }
+    }
+
+    private var downloads: some View {
         @Bindable var queue = queue
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: Space.md) {
                 TextField("Paste a YouTube or playlist link and press Return", text: $link)
                     .textFieldStyle(.roundedBorder)
@@ -40,7 +59,6 @@ struct MusicView: View {
             Divider()
             list
         }
-        .navigationTitle(Module.ytMusic.title)
         .toolbar {
             if let issue = queue.issue {
                 // Beside the page title: one fix for every song the problem stopped.

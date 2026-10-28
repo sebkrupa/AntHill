@@ -99,6 +99,31 @@ enum SelfTest {
                   MusicQueue(defaults: AppModel.defaults).folder == "/tmp/AntHill-music")
             queue.folder = old
 
+            let llama = model.llama
+            let (oldAddress, oldModel) = (llama.address, llama.model)
+            llama.address = "http://127.0.0.1:9"
+            llama.model = "test-model"
+            let saved = LlamaConnection(defaults: AppModel.defaults)
+            check("the llama.cpp address and model are saved", saved.address == "http://127.0.0.1:9" && saved.model == "test-model")
+            model.musicPage = .library
+            llama.status = .connected
+            llama.models = ["other-model"]
+            check("the Library tab hides while the chosen model is not on the server", model.shownMusicPage == .downloads)
+            llama.models = ["test-model"]
+            check("the Library tab shows when the model is available", model.shownMusicPage == .library)
+            model.library.insertSample(SeedData.tracks)
+            model.library.task = .organizeUnknown
+            model.library.selection = []
+            model.library.start(with: llama)
+            check("Run asks about every song the task applies to", model.library.progress?.total == 2)
+            for _ in 0..<50 where model.library.running { try? await Task.sleep(for: .seconds(0.1)) }
+            check("an unreachable model stops the run, says so, and changes nothing",
+                  !model.library.running && model.library.error != nil && model.library.changes == [])
+            model.library.changes = nil
+            model.musicPage = .downloads
+            llama.status = .unknown
+            (llama.address, llama.model) = (oldAddress, oldModel)
+
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }

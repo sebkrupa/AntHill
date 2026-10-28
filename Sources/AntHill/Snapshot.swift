@@ -38,6 +38,14 @@ enum Snapshot {
                     try? await Task.sleep(for: .seconds(0.8))
                     capture(to: "\(dir)/\(page.rawValue)-\(mode).png")
                 }
+                // The YT-Music Library tab: yt-music-library-<mode>.png.
+                if only?.contains("yt-music") ?? true, model.llama.available {
+                    model.sidebar = .ytMusic
+                    model.musicPage = .library
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/yt-music-library-\(mode).png")
+                    model.musicPage = .downloads
+                }
             }
             // The Log popover for every sample item that has one: log-<n>-<mode>.png.
             if only == nil || only?.contains("log") == true {
@@ -58,7 +66,9 @@ enum Snapshot {
                 pick.entries = SeedData.playlist
                 pick.chosen = Set(pick.entries.prefix(5).map(\.id))
                 pick.loading = false
-                let panels: [(String, AnyView)] = [("playlist", AnyView(PlaylistSheet(pick: pick)))]
+                model.library.changes = SeedData.changes
+                model.library.chosen = Set(SeedData.changes.map(\.id))
+                let panels: [(String, AnyView)] = [("playlist", AnyView(PlaylistSheet(pick: pick))), ("review", AnyView(ReviewSheet()))]
                     + [YTMusic.Issue.signIn, .cookieAccess, .missingTool].map { ("fix-\($0)", AnyView(IssueFixView(issue: $0))) }
                 for mode in ["light", "dark"] {
                     NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
@@ -70,6 +80,7 @@ enum Snapshot {
                         window.close()
                     }
                 }
+                model.library.changes = nil
             }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }

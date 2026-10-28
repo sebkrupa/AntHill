@@ -20,6 +20,13 @@ enum Module: String, CaseIterable, Identifiable {
     }
 }
 
+enum MusicPage: String, CaseIterable, Identifiable {
+    case downloads, library
+
+    var id: String { rawValue }
+    var title: String { self == .downloads ? "Downloads" : "Library" }
+}
+
 /// App-wide state that menus, toolbars, and views share.
 @Observable
 final class AppModel {
@@ -38,12 +45,22 @@ final class AppModel {
         didSet { Self.defaults.set(Array(menuBarHidden), forKey: "menuBar.hidden") }
     }
     let music = MusicQueue(defaults: defaults, history: Store.history)
+    let llama = LlamaConnection(defaults: defaults)
+    let library = MusicLibrary()
+    /// The YT-Music page: the download queue, or the Music library the model works on.
+    var musicPage: MusicPage = .downloads
     let updates = Updates(defaults: defaults)
 
     init() {
         // Test runs must not reach GitHub or show alerts.
-        if !Store.isOverridden { updates.checkDaily() }
+        if !Store.isOverridden {
+            updates.checkDaily()
+            Task { await llama.refresh() }
+        }
     }
+
+    /// The page shown: Library only while the model is available.
+    var shownMusicPage: MusicPage { llama.available ? musicPage : .downloads }
 
     var menuBarModules: [Module] { Module.allCases.filter { !menuBarHidden.contains($0.rawValue) } }
 }

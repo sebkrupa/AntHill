@@ -12,6 +12,20 @@ enum SeedData {
         "Björk - Jóga", "Air - La femme d'argent", "Bonobo - Kerala",
     ].enumerated().map { .init(id: "sample\($0.offset)", title: $0.element) }
 
+    static let tracks: [Library.Track] = [
+        .init(id: "T1", name: "One More Time", artist: "Daft Punk", album: "Discovery", duration: 320),
+        .init(id: "T2", name: "Daft Punk - One More Time (Official Video)", artist: "", album: "", duration: 322),
+        .init(id: "T3", name: "Dreams (2004 Remaster)", artist: "Fleetwood Mac", album: "", duration: 257),
+        .init(id: "T4", name: "Teardrop", artist: "Unknown Artist", album: "", duration: 330),
+        .init(id: "T5", name: "Feeling Good", artist: "Nina Simone", album: "I Put a Spell on You", duration: 177),
+    ]
+
+    static let changes: [Library.Change] = [
+        .init(track: tracks[1], kind: .trash(keeping: tracks[0])),
+        .init(track: tracks[2], kind: .edit(name: "Dreams", artist: "Fleetwood Mac", album: "Rumours")),
+        .init(track: tracks[3], kind: .edit(name: "Teardrop", artist: "Massive Attack", album: "Mezzanine")),
+    ]
+
     static func insertIfRequested(into model: AppModel) {
         guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
         guard Store.isOverridden else {
@@ -48,5 +62,9 @@ enum SeedData {
         converting.log = ["[youtube] Extracting URL", "[download] 100% of 182.40MiB",
                           "[ExtractAudio] Destination: Find Your Focus.m4a"]
         model.music.insertSample(converting)
+        model.llama.models = ["qwen3-8b"]
+        model.llama.model = "qwen3-8b"
+        model.llama.status = .connected
+        model.library.insertSample(tracks)
     }
 }
