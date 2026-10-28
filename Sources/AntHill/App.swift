@@ -74,6 +74,25 @@ struct AntHillApp: App {
                     .keyboardShortcut(".", modifiers: .command)
                     .disabled(!model.library.running)
             }
+            CommandMenu("Shop Check") {
+                Button("Check Again") {
+                    model.sidebar = .shopCheck
+                    model.shopChecks.checkAgain()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(model.shopChecks.selected == nil || model.shopChecks.running != nil)
+                Button("Remove Report") {
+                    if let id = model.shopChecks.selection { model.shopChecks.remove(id) }
+                }
+                .keyboardShortcut(.delete, modifiers: [.command, .option])
+                .disabled(model.shopChecks.selected == nil)
+                Button("Clear History…") {
+                    model.sidebar = .shopCheck
+                    model.shopChecks.confirmsClear = true
+                }
+                .keyboardShortcut(.delete, modifiers: [.command, .shift])
+                .disabled(model.shopChecks.reports.isEmpty)
+            }
         }
 
         // The menu bar icon stays while the window is closed; Quit lives here.

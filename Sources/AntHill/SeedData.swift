@@ -26,6 +26,24 @@ enum SeedData {
         .init(track: tracks[3], kind: .edit(name: "Teardrop", artist: "Massive Attack", album: "Mezzanine")),
     ]
 
+    static let shopReports: [ShopCheck.Report] = [
+        .init(domain: "nike-outlet.shop", date: .now, findings: [
+            .init(kind: .bad, points: 3, text: "The domain is new: registered 2026-09-30 (28 days ago)."),
+            .init(kind: .bad, points: 3, text: "No NIP or KRS on the site. Nobody knows who runs the shop."),
+            .init(kind: .bad, points: 2, text: "The domain has the brand “nike”, but it is not the brand’s own domain."),
+            .init(kind: .bad, points: 1, text: "Time pressure on the site (“countdown”)."),
+            .init(kind: .ok, points: 0, text: "The domain is not on the CERT Polska warning list."),
+            .init(kind: .info, points: 0, text: "The site has HTTPS (the padlock). That is only encryption, no proof the shop is honest."),
+        ], hints: [
+            .init(text: "Product photos: search by image in Google Lens, TinEye, or Yandex Images.", url: nil),
+            .init(text: "Reviews outside the shop: Trustpilot", url: URL(string: "https://www.trustpilot.com/review/nike-outlet.shop")),
+        ]),
+        .init(domain: "kowalski.pl", date: .now.addingTimeInterval(-86_400), findings: [
+            .init(kind: .ok, points: 0, text: "Domain registered 2012-03-01."),
+            .init(kind: .ok, points: 0, text: "Company in the VAT white list: SKLEP KOWALSKI SP. Z O.O., NIP 9562307719, status Czynny."),
+        ], hints: []),
+    ]
+
     static func insertIfRequested(into model: AppModel) {
         guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
         guard Store.isOverridden else {
@@ -66,5 +84,6 @@ enum SeedData {
         model.llama.model = "qwen3-8b"
         model.llama.status = .connected
         model.library.insertSample(tracks)
+        for report in shopReports.reversed() { model.shopChecks.add(report) }
     }
 }

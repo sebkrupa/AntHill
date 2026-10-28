@@ -14,5 +14,6 @@
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>AntHill reads your songs from Music and applies the name, album, and duplicate fixes you approve.</string>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>

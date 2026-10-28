@@ -4,18 +4,21 @@ import Foundation
 /// A new module: add a case here and its view in `ModuleView`.
 enum Module: String, CaseIterable, Identifiable {
     case ytMusic = "yt-music"
+    case shopCheck = "shop-check"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .ytMusic: "YT-Music"
+        case .shopCheck: "eCommerce Security Check"
         }
     }
 
     var symbol: String {
         switch self {
         case .ytMusic: "music.note"
+        case .shopCheck: "checkmark.shield"
         }
     }
 }
@@ -47,6 +50,7 @@ final class AppModel {
     let music = MusicQueue(defaults: defaults, history: Store.history)
     let llama = LlamaConnection(defaults: defaults)
     let library = MusicLibrary()
+    let shopChecks = ShopChecks(history: Store.shopChecks)
     /// The YT-Music page: the download queue, or the Music library the model works on.
     var musicPage: MusicPage = .downloads
     let updates = Updates(defaults: defaults)
@@ -75,5 +79,11 @@ enum Store {
     static var history: URL {
         if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]!) }
         return URL.applicationSupportDirectory.appending(path: "AntHill/history.json")
+    }
+
+    /// The eCommerce Security Check reports, kept until the person clears them.
+    static var shopChecks: URL {
+        if isOverridden { return URL(fileURLWithPath: ProcessInfo.processInfo.environment["APP_STORE"]! + "-shop-checks.json") }
+        return URL.applicationSupportDirectory.appending(path: "AntHill/shop-checks.json")
     }
 }

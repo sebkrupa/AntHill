@@ -45,6 +45,12 @@ struct ModuleMenu: View {
         switch module {
         case .ytMusic:
             Button("Paste Link") { model.music.addFromClipboard() }
+        case .shopCheck:
+            Button("Check Copied Address") {
+                model.sidebar = .shopCheck
+                model.shopChecks.check(NSPasteboard.general.string(forType: .string) ?? "")
+            }
+            .disabled(model.shopChecks.running != nil)
         }
     }
 }

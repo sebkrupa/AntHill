@@ -124,6 +124,21 @@ enum SelfTest {
             llama.status = .unknown
             (llama.address, llama.model) = (oldAddress, oldModel)
 
+            let shops = model.shopChecks
+            shops.startsChecks = false
+            check("text that is no web address starts no shop check", !shops.check("hello") && shops.running == nil)
+            for report in SeedData.shopReports { shops.add(report) }
+            let reloaded = ShopChecks(history: Store.shopChecks)
+            check("shop check reports survive a restart, newest first",
+                  reloaded.reports.prefix(2).map(\.id) == shops.reports.prefix(2).map(\.id) && reloaded.reports.count == shops.reports.count)
+            if let first = shops.reports.first {
+                shops.remove(first.id)
+                check("removing a report takes it out of the saved history",
+                      !ShopChecks(history: Store.shopChecks).reports.contains { $0.id == first.id })
+            }
+            shops.clearHistory()
+            check("Clear History removes every saved report", ShopChecks(history: Store.shopChecks).reports.isEmpty)
+
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }
