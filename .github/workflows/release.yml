@@ -36,5 +36,5 @@ jobs:
       - name: Publish
         run: |
           zip="AntHill-$VERSION.zip"
-          ditto -c -k --keepParent "$HOME/Applications/AntHill.app" "$zip"
+          ditto -c -k --keepParent "/Applications/AntHill.app" "$zip"
           gh release create "v$VERSION" "$zip" --target "$GITHUB_SHA" --title "AntHill $VERSION" --generate-notes

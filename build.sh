@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds AntHill and installs it to ~/Applications/AntHill.app.
+# Builds AntHill and installs it to /Applications/AntHill.app.
 # Build products live in ~/Library/Developer/AntHill, outside the repo
 # (and outside Dropbox or iCloud, which would try to sync them).
 #
@@ -38,8 +38,7 @@ if [[ -n "$stale" ]]; then
   exit 1
 fi
 
-app="$HOME/Applications/$name.app"
-mkdir -p "$HOME/Applications"
+app="/Applications/$name.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/$name"

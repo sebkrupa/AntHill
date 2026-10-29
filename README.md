@@ -33,7 +33,7 @@ Download the zip from the latest [release](https://github.com/sebkrupa/AntHill/r
 or build from source:
 
 ```sh
-./build.sh          # release build, signs, installs ~/Applications/AntHill.app
+./build.sh          # release build, signs, installs /Applications/AntHill.app
 ./build.sh --open   # also quits the running copy and opens the new one
 ./build.sh --debug  # debug build
 ```
