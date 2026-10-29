@@ -54,7 +54,7 @@ to install it.
 ## Develop
 
 ```sh
-swift test --scratch-path ~/Library/Developer/AntHill/test-build   # unit tests
+tools/test.sh                                                       # unit tests
 tools/selftest.sh                                                   # the app's real functions on a /tmp store
 tools/snap.sh                                                       # light and dark snapshots in /tmp/AntHill-shots
 tools/grid-lint.sh && swift tools/check-layout.swift /tmp/AntHill-shots/*-layout.json
