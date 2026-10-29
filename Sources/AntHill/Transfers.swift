@@ -253,7 +253,7 @@ final class Transfers {
             let target = Filesfer.freeName(for: (plan.destination as NSString).appendingPathComponent(path), exists: manager.fileExists(atPath:))
             if cut { try manager.moveItem(atPath: source, toPath: target) } else { try manager.copyItem(atPath: source, toPath: target) }
         }
-        if cut && isFolder { Filesfer.removeEmptyFolders(job.from, includingSelf: job.selection == .whole) }
+        if cut && isFolder { Filesfer.removeEmptyFolders(job.from, includingSelf: false) }
         return count
     }
 

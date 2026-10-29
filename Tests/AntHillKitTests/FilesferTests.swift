@@ -27,7 +27,7 @@ private func job(_ from: String, _ selection: Filesfer.Selection = .whole, _ pat
     let plan = try Filesfer.plan(job(from))
     #expect(Set(plan.files) == ["IMG_1.JPG", "notes.txt", "sub/IMG_2.jpg", "sub/deep/clip.mov", ".hidden.jpg", ".git/x.jpg"])
     #expect(plan.folders.contains("empty"))
-    #expect(plan.destination == "/tmp/out/" + (from as NSString).lastPathComponent)
+    #expect(plan.destination == "/tmp/out")
     #expect(plan.bytes == 6)
 }
 
@@ -52,9 +52,11 @@ private func job(_ from: String, _ selection: Filesfer.Selection = .whole, _ pat
     bad.to = "/Users/me/Photos/"
     #expect(Filesfer.problem(bad, fromIsFolder: true)?.contains("same folder") == true)
     bad.to = "/Users/me"
-    #expect(Filesfer.problem(bad, fromIsFolder: true)?.contains("already in WHERE") == true)
-    bad.operation = .zip
     #expect(Filesfer.problem(bad, fromIsFolder: true) == nil)
+    bad.from = "/Users/me/notes.txt"
+    #expect(Filesfer.problem(bad, fromIsFolder: false)?.contains("already in WHERE") == true)
+    bad.operation = .zip
+    #expect(Filesfer.problem(bad, fromIsFolder: false) == nil)
     var regex = job("/Users/me/Photos", .regex, "([")
     #expect(Filesfer.problem(regex, fromIsFolder: true) == "The regex is not valid.")
     regex.pattern = " "

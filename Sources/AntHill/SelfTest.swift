@@ -193,18 +193,18 @@ enum SelfTest {
         copy.from = root + "/src"
         copy.to = root + "/out"
         let first = await run(copy)
-        check("Copy takes the whole folder into WHERE/<folder>, without .DS_Store",
-              first?.error == nil && first?.files == 2 && read("out/src/a.txt") == "one" && exists("out/src/sub/b.jpg") && !exists("out/src/.DS_Store"),
+        check("Copy takes what is in the folder into WHERE, without .DS_Store",
+              first?.error == nil && first?.files == 2 && read("out/a.txt") == "one" && exists("out/sub/b.jpg") && !exists("out/.DS_Store"),
               first?.error ?? "")
         _ = await run(copy)
-        check("running again with the same files makes no copies", !exists("out/src/a 2.txt"))
+        check("running again with the same files makes no copies", !exists("out/a 2.txt"))
         write("src/a.txt", "two!")
         _ = await run(copy)
         check("Keep Both copies a changed file as “a 2.txt” and keeps the old one",
-              read("out/src/a 2.txt") == "two!" && read("out/src/a.txt") == "one")
+              read("out/a 2.txt") == "two!" && read("out/a.txt") == "one")
         copy.conflict = .overwrite
         _ = await run(copy)
-        check("Overwrite replaces the file", read("out/src/a.txt") == "two!" && !exists("out/src/a 3.txt"))
+        check("Overwrite replaces the file", read("out/a.txt") == "two!" && !exists("out/a 3.txt"))
 
         var cut = Filesfer.Job()
         cut.from = root + "/src"
@@ -214,7 +214,7 @@ enum SelfTest {
         cut.pattern = "JPG"
         let moved = await run(cut)
         check("Cut with a filter moves only matching files and removes the folders left empty",
-              moved?.error == nil && exists("moved/src/sub/b.jpg") && !exists("src/sub") && exists("src/a.txt"), moved?.error ?? "")
+              moved?.error == nil && exists("moved/sub/b.jpg") && !exists("src/sub") && exists("src/a.txt"), moved?.error ?? "")
 
         var zip = Filesfer.Job()
         zip.from = root + "/src"
@@ -226,7 +226,18 @@ enum SelfTest {
         check("Zip and Copy makes a dated zip, and a second one as “2”",
               exists("zips/" + name) && exists("zips/" + name.replacingOccurrences(of: ".zip", with: " 2.zip")))
 
-        let before = manager.fileExists(atPath: root + "/out/src/a.txt")
+        write("films/one.mov", "1")
+        write("films/series/two.mov", "2")
+        var empty = Filesfer.Job()
+        empty.from = root + "/films"
+        empty.to = root + "/drive/films"
+        empty.operation = .cut
+        let emptied = await run(empty)
+        check("Cut of a whole folder moves what is in it and leaves the folder empty",
+              emptied?.error == nil && exists("drive/films/one.mov") && exists("drive/films/series/two.mov")
+                  && exists("films") && (try? manager.contentsOfDirectory(atPath: root + "/films"))?.isEmpty == true, emptied?.error ?? "")
+
+        let before = manager.fileExists(atPath: root + "/out/a.txt")
         var due = copy
         due.schedule.kind = .daily
         transfers.commit(due)
