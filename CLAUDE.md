@@ -16,7 +16,7 @@ in ~/Library/Application Support/AntHill/history.json, settings in UserDefaults.
 - `Sources/AntHill/` the app. `App.swift` has the window, menus, and the database location.
 - `Sources/AntHillKit/` rules and data logic with no SwiftUI. Tests in `Tests/AntHillKitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
-- `build.sh` builds, signs, and installs `~/Applications/AntHill.app`.
+- `build.sh` builds, signs, and installs `/Applications/AntHill.app`.
 - `Icon/AppIcon.icon` the app icon, an Icon Composer file (JSON plus SVG layers). `build.sh` compiles it with `tools/make_icon.sh`; `tools/icon_review.sh` renders every look into one PNG.
 - `docs/` the brief, the screen index, and the user stories, when they exist.
 

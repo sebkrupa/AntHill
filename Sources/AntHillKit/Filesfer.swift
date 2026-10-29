@@ -139,7 +139,7 @@ public enum Filesfer {
     /// The files one run takes, as paths relative to `source`.
     public struct Plan: Sendable {
         public var source: String
-        /// Where `source`'s files land: WHERE/<FROM name> for a folder, WHERE for a file.
+        /// Where `source`'s files land: WHERE. A folder gives its contents, not itself.
         public var destination: String
         public var files: [String]
         /// Folders to create even when empty (Whole Folder only).
@@ -191,8 +191,8 @@ public enum Filesfer {
         let from = standard(job.from), to = standard(job.to)
         if from == to { return "FROM and WHERE are the same folder." }
         if to.hasPrefix(from + "/") { return "WHERE is inside FROM, so the job would copy into itself." }
-        // Copy or cut into the folder that already holds FROM would write the files onto themselves.
-        if job.operation != .zip && (from as NSString).deletingLastPathComponent == to { return "FROM is already in WHERE." }
+        // Copy or cut of a file into the folder that already holds it would write it onto itself.
+        if !fromIsFolder && job.operation != .zip && (from as NSString).deletingLastPathComponent == to { return "FROM is already in WHERE." }
         if job.schedule.kind == .weekly && job.schedule.weekdays.isEmpty { return "Pick at least one day." }
         if fromIsFolder && job.selection != .whole {
             if job.pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Type what to match, like \(job.selection.prompt)." }
@@ -215,7 +215,7 @@ public enum Filesfer {
         }
         let whole = job.selection == .whole
         let matches = try matcher(job.selection, job.pattern)
-        var plan = Plan(source: job.from, destination: (job.to as NSString).appendingPathComponent(name), files: [], bytes: 0)
+        var plan = Plan(source: job.from, destination: job.to, files: [], bytes: 0)
         guard let walk = manager.enumerator(atPath: job.from) else { throw Failure("Can't read \(name).") }
         while let path = walk.nextObject() as? String {
             let file = (path as NSString).lastPathComponent
