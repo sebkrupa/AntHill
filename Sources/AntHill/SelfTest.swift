@@ -115,14 +115,14 @@ enum SelfTest {
             model.library.selection = []
             check("all library tasks are checked by default", model.library.tasks == Set(Library.Task.allCases))
             model.library.start(with: llama)
-            check("Run asks once about every song plus each duplicate group", model.library.progress?.total == 6)
+            check("Run asks about all songs in one batch plus each duplicate group", model.library.progress?.total == 2)
             for _ in 0..<50 where model.library.running { try? await Task.sleep(for: .seconds(0.1)) }
             check("an unreachable model stops the run, says so, and changes nothing",
                   !model.library.running && model.library.error != nil && model.library.changes == [] && model.library.notes.isEmpty)
             model.library.changes = nil
             model.library.tasks = [.organizeUnknown]
             model.library.start(with: llama)
-            check("Organize Unknown alone asks only about songs without an artist", model.library.progress?.total == 2)
+            check("Organize Unknown alone asks one batch about the songs without an artist", model.library.progress?.total == 1)
             for _ in 0..<50 where model.library.running { try? await Task.sleep(for: .seconds(0.1)) }
             model.library.changes = nil
             model.library.tasks = Set(Library.Task.allCases)
