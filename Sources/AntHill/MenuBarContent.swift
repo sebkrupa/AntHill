@@ -59,6 +59,10 @@ struct ModuleMenu: View {
                 .disabled(model.transfers.jobs.isEmpty)
             Button("Stop") { model.transfers.stopAll() }
                 .disabled(!model.transfers.running)
+        case .netLock:
+            Text(model.netLock.status)
+            Button(model.netLock.isOn ? "Unlock Network" : "Lock Network") { model.netLock.toggle() }
+                .disabled(model.netLock.busy)
         }
     }
 }

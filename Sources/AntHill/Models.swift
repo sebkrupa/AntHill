@@ -7,6 +7,7 @@ enum Module: String, CaseIterable, Identifiable {
     case shopCheck = "shop-check"
     case network = "network"
     case filesfer = "filesfer"
+    case netLock = "network-lock"
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .shopCheck: "eCommerce Security Check"
         case .network: "Network Monitor"
         case .filesfer: "Filesfer"
+        case .netLock: "Network Lock"
         }
     }
 
@@ -25,6 +27,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .shopCheck: "checkmark.shield"
         case .network: "network"
         case .filesfer: "arrow.left.arrow.right.square"
+        case .netLock: "network.slash"
         }
     }
 }
@@ -59,6 +62,7 @@ final class AppModel {
     let shopChecks = ShopChecks(history: Store.shopChecks)
     let network = NetworkWatch(defaults: defaults)
     let transfers = Transfers(history: Store.filesfer)
+    let netLock = NetworkLock(defaults: defaults)
     /// The YT-Music page: the download queue, or the Music library the model works on.
     var musicPage: MusicPage = .downloads
     let updates = Updates(defaults: defaults)

@@ -63,6 +63,8 @@ if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   fi
   cp -X "$here/Resources/AppIcon.icns" "$app/Contents/Resources/"
 fi
+# Network Lock runs this script as root.
+cp -X "$here/Resources/netlock" "$app/Contents/Resources/"
 xattr -cr "$app"
 codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
 echo "installed $app (signed: ${identity})"

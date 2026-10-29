@@ -161,11 +161,38 @@ enum SelfTest {
             check("lsof reads this Mac's connections", watch.error == nil && !watch.apps.isEmpty, watch.error ?? "")
             watch.name = oldName
 
+            netLock(model.netLock)
+
             await filesfer(model.transfers)
 
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }
+    }
+
+    /// The allowed apps, and the bundled netlock script in dry-run mode (no root, pf untouched).
+    private static func netLock(_ lock: NetworkLock) {
+        let old = lock.apps
+        lock.apps = []
+        lock.add([URL(filePath: "/System/Applications/Calculator.app"), URL(filePath: "/usr/bin/curl"), URL(filePath: "/System/Applications/Calculator.app")])
+        check("an app is allowed once, a file that is no app is refused",
+              lock.apps == ["/System/Applications/Calculator.app"] && lock.error != nil)
+        check("the allowed apps are saved", NetworkLock(defaults: AppModel.defaults).apps == lock.apps)
+        lock.remove(Set(lock.apps))
+        check("removing an app takes it off the list", lock.apps.isEmpty)
+        lock.apps = old
+        guard let script = NetworkLock.script else { return check("AntHill.app has the netlock script", false) }
+        let process = Process()
+        process.executableURL = URL(filePath: "/bin/bash")
+        process.arguments = [script, "--dry-run", "--allow", "/System/Applications/Calculator.app"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        check("netlock blocks everything in and out except the allowed apps' ports",
+              output.contains("block drop out all") && output.contains("block drop in all") && output.contains("anchor \"netlock\""), output)
     }
 
     /// Real rsync, zip, and ditto runs on folders in /tmp.
