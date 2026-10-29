@@ -18,9 +18,13 @@ public enum NetLock {
     }
 
     /// Stops a running lock and waits until it has restored the network (it does that on SIGTERM).
+    /// Failsafe: a lock still running after 5 s ignored SIGTERM (a signal ignored when bash starts
+    /// can't be trapped), so it gets SIGKILL and the network is restored here. Unlock never hangs.
     public static func stopCommand(script: String) -> String {
         let pattern = quote(pattern(script: script))
-        return "/usr/bin/pkill -TERM -f \(pattern); while /usr/bin/pgrep -f \(pattern) >/dev/null; do sleep 0.2; done"
+        return "/usr/bin/pkill -TERM -f \(pattern); i=0; while /usr/bin/pgrep -f \(pattern) >/dev/null; do "
+            + "if [ $i -ge 25 ]; then /usr/bin/pkill -KILL -f \(pattern); sleep 0.5; /bin/bash \(quote(script)) restore; break; fi; "
+            + "i=$((i + 1)); sleep 0.2; done"
     }
 
     /// Stops a running lock, then starts it again in the background with these apps.

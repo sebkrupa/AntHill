@@ -26,6 +26,35 @@ private let script = "/Applications/AntHill.app/Contents/Resources/netlock"
     #expect(!matches("/bin/bash \(script)x --no-monitor"))
 }
 
+@Test func stopKillsALockThatIgnoresTermAndRestoresTheNetwork() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let fake = dir.appending(path: "netlock").path
+    try """
+    [ "$1" = restore ] && { touch "$0.restored"; exit 0; }
+    trap '' TERM
+    while :; do sleep 0.2; done
+    """.write(toFile: fake, atomically: true, encoding: .utf8)
+    let lock = Process()
+    lock.executableURL = URL(filePath: "/bin/bash")
+    lock.arguments = [fake, "--no-monitor"]
+    try lock.run()
+    defer { lock.terminate() }
+    Thread.sleep(forTimeInterval: 0.3)
+
+    let stop = Process()
+    stop.executableURL = URL(filePath: "/bin/sh")
+    stop.arguments = ["-c", NetLock.stopCommand(script: fake)]
+    try stop.run()
+    let deadline = Date.now.addingTimeInterval(15)
+    while stop.isRunning && Date.now < deadline { Thread.sleep(forTimeInterval: 0.2) }
+    #expect(!stop.isRunning)
+    lock.waitUntilExit()
+    #expect(lock.terminationReason == .uncaughtSignal)
+    #expect(FileManager.default.fileExists(atPath: fake + ".restored"))
+}
+
 @Test func appleScriptEscapesQuotesAndBackslashes() {
     #expect(NetLock.appleScript(#"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#)
 }
