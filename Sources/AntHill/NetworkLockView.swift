@@ -43,7 +43,7 @@ struct NetworkLockView: View {
                 .onChange(of: lock.mode) { selection = [] }
                 Text(lock.mode == .allow
                      ? "While locked, only the apps below have network, with the apps they start. Everything else is blocked, system services included; only DNS lookups pass. The lock stays on after AntHill quits, until you unlock or restart the Mac."
-                     : "While locked, only the apps below lose the network, with the apps they start. Everything else keeps it. The lock stays on after AntHill quits, until you unlock or restart the Mac.")
+                     : "While locked, only the apps below lose the network, with the apps they start. Everything else keeps it; a new connection of another app waits about a second before it goes through. The lock stays on after AntHill quits, until you unlock or restart the Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if let error = lock.error {

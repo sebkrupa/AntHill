@@ -192,8 +192,8 @@ enum SelfTest {
         check("netlock blocks everything in and out except the allowed apps' ports",
               allow.contains("block drop out all") && allow.contains("block drop in all") && allow.contains("anchor \"netlock\""), allow)
         let block = dryRun(script, "--block")
-        check("netlock with a block list passes everything except the blocked apps' ports",
-              block.contains("pass out all no state") && !block.contains("block drop out all") && block.contains("anchor \"netlock\""), block)
+        check("netlock with a block list blocks new sockets until it passes every other app's ports",
+              block.contains("block drop out all") && block.contains("anchor \"netlock\"") && block.contains("every other process"), block)
     }
 
     private static func dryRun(_ script: String, _ flag: String) -> String {

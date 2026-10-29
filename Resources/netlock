@@ -3,8 +3,10 @@
 # or block only chosen apps (--block). Uses pf.
 # An app is matched by process (any path containing /Name.app/, child
 # processes included), so it may already be running. Every POLL seconds netlock
-# lists the sockets of those processes (lsof) and loads pass rules (--allow) or
-# block rules (--block) for their local ports into the pf anchor "netlock".
+# lists the sockets of those processes (--allow) or of every other process
+# (--block) with lsof and loads pass rules for their local ports into the pf
+# anchor "netlock"; everything else stays blocked. A new socket of a passed
+# process waits for one TCP retry (about 1 s) before it is passed.
 # Needs root. Restores the default pf config on exit (Ctrl+C, SIGTERM, SIGHUP).
 # After a kill -9 run: sudo netlock restore
 # While running it shows live per-process traffic (nettop) since start.
@@ -31,6 +33,8 @@ SLEEP_PID=""
 MON_PID=""
 PIDFILE=""
 LAST_RULES=""
+PIDS=""
+RESPONSIBLE=""      # "pid responsible-pid" per XPC service seen; launchctl procinfo is slow and the answer never changes
 
 usage() {
   cat <<USAGE
@@ -45,7 +49,8 @@ usage:
 Allowed apps may already be running. Their child processes count as the app.
 Apps listed in ~/.config/netlock/allow (pick them with netlock-apps, no sudo) are always allowed too.
 Without --allow and with an empty list everything except DNS (port 53) is blocked.
-With --block only those apps are cut off and everything else keeps the network
+With --block only those apps are cut off and everything else keeps the network;
+a new connection of another app waits about 1 s (one TCP retry) before it passes
 (--allow, --allow-port and ~/.config/netlock/allow don't apply).
 While running, a live table shows traffic per process since start (--no-monitor turns it off).
 USAGE
@@ -89,9 +94,24 @@ resolve_app() {   # <spec> -> prints "/Name.app/" for an app bundle or the binar
   echo "/$(basename "$app")/"
 }
 
-allowed_pids() {   # -> pids of every process of the allowed apps, children included
-  ps -axww -o pid=,ppid=,comm= | awk -v m="$(IFS="|"; echo "${APP_MATCH[*]}")" '
+responsible_of() {   # <pid> -> "pid responsible-pid" (0 when launchd doesn't know it)
+  local r
+  r=$(launchctl procinfo "$1" 2>/dev/null | awk -F' = ' '$1 ~ /^[[:space:]]*responsible pid$/ { print $2; exit }')
+  echo "$1 ${r:-0}"
+}
+export -f responsible_of
+
+allowed_pids() {   # -> PIDS: every process of the listed apps, children and their XPC services included
+  local list new
+  list=$(ps -axww -o pid=,ppid=,comm=)
+  # An XPC service like com.apple.WebKit.Networking (Safari's traffic) runs under launchd, not under
+  # the app; launchd records the app as its responsible process. Ask once per new service, 16 at a time.
+  new=$(awk 'NR == FNR { known[$1] = 1; next }
+    $2 == 1 && $0 ~ /\.xpc\/Contents\/MacOS\// && !($1 in known) { print $1 }' <(echo "$RESPONSIBLE") <(echo "$list"))
+  [[ -n $new ]] && RESPONSIBLE+=$(xargs -P 16 -n 1 /bin/bash -c 'responsible_of "$1"' _ <<<"$new")$'\n'
+  PIDS=$(awk -v m="$(IFS="|"; echo "${APP_MATCH[*]}")" '
     BEGIN { n = split(m, M, "|") }
+    NR == FNR { if (NF == 2) resp[$1] = $2; next }
     {
       pid = $1; parent[pid] = $2
       comm = $0; sub(/^ *[0-9]+ +[0-9]+ +/, "", comm)
@@ -102,43 +122,55 @@ allowed_pids() {   # -> pids of every process of the allowed apps, children incl
     }
     END {
       do { more = 0; for (p in parent) if (!(p in hit) && (parent[p] in hit)) { hit[p] = 1; more = 1 } } while (more)
+      for (p in resp) if ((p in parent) && (resp[p] in hit)) hit[p] = 1
       for (p in hit) print p
-    }'
+    }' <(echo "$RESPONSIBLE") <(echo "$list"))
+  # Forget services that have exited, so the cache stays the size of the running ones.
+  RESPONSIBLE=$(awk 'NR == FNR { alive[$1] = 1; next } ($1 in alive)' <(echo "$list") <(echo "$RESPONSIBLE"))$'\n'
+  return 0
 }
 
-anchor_rules() {   # pids... -> pf rules passing (or, with --block, blocking) the local ports of their sockets, nothing if none
-  (( $# )) || return 0
-  local action="pass" flags=" flags any"
-  [[ $MODE == block ]] && { action="block drop"; flags=""; }
-  lsof -a -n -P -i -p "$(IFS=,; echo "$*")" -F nP 2>/dev/null | awk -v action="$action" -v flags="$flags" '
+anchor_rules() {   # pids... -> pf rules passing the local ports of their sockets (--allow), or of every other process's sockets (--block)
+  local list
+  if [[ $MODE == block ]]; then
+    # Strict: a new socket stays blocked until it is seen, so the blocked app never gets a packet out first.
+    list=$(lsof -n -P -i -F pPn 2>/dev/null)
+  else
+    (( $# )) || return 0
+    list=$(lsof -a -n -P -i -p "$(IFS=,; echo "$*")" -F pPn 2>/dev/null)
+  fi
+  awk -v mode="$MODE" -v blocked=" $* " '
+    /^p/ { mine = mode == "allow" || index(blocked, " " substr($0, 2) " ") == 0; next }
     /^P/ { proto = tolower(substr($0, 2)); next }
     /^n/ {
-      if (proto ~ /^icmp/) { icmp[proto] = 1; next }   # ping: an ICMP socket has no port
+      if (proto ~ /^icmp/) { if (mine) icmp[proto] = 1; else noicmp[proto] = 1; next }   # ping: an ICMP socket has no port
       local = substr($0, 2); sub(/->.*/, "", local)
       port = local; sub(/.*:/, "", port)
-      if (port !~ /^[0-9]+$/ || (proto != "tcp" && proto != "udp") || ((proto, port) in seen)) next
-      seen[proto, port] = 1; ports[proto] = ports[proto] " " port
+      if (port !~ /^[0-9]+$/ || (proto != "tcp" && proto != "udp")) next
+      if (mine) pass[proto, port] = 1; else stop[proto, port] = 1   # a port the blocked app shares stays blocked
     }
     END {
-      # shortcut: pf cannot tell whose ICMP echo it is, so while a listed app has an ICMP socket
-      # every process is passed (--allow) or blocked (--block) for ping; upgrade with a Network Extension filter.
-      if ("icmp" in icmp) printf "%s out quick inet proto icmp icmp-type echoreq\n", action
-      if ("icmpv6" in icmp) printf "%s out quick inet6 proto icmp6 icmp6-type echoreq\n", action
+      for (k in pass) if (!(k in stop)) { split(k, f, SUBSEP); ports[f[1]] = ports[f[1]] " " f[2] }
+      # shortcut: pf cannot tell whose ICMP echo it is, so ping passes for every process while a passed
+      # process has an ICMP socket and the blocked app has none; upgrade with a Network Extension filter.
+      if (("icmp" in icmp) && !("icmp" in noicmp)) print "pass out quick inet proto icmp icmp-type echoreq"
+      if (("icmpv6" in icmp) && !("icmpv6" in noicmp)) print "pass out quick inet6 proto icmp6 icmp6-type echoreq"
       # flags any: a connection that exists before its rule (app already running) is picked up mid-stream
       if ("tcp" in ports) {
-        printf "%s out quick proto tcp from any port {%s }%s\n", action, ports["tcp"], flags
-        printf "%s in quick proto tcp to any port {%s }%s\n", action, ports["tcp"], flags
+        printf "pass out quick proto tcp from any port {%s } flags any\n", ports["tcp"]
+        printf "pass in quick proto tcp to any port {%s } flags any\n", ports["tcp"]
       }
       if ("udp" in ports) {
-        printf "%s out quick proto udp from any port {%s }\n", action, ports["udp"]
-        printf "%s in quick proto udp to any port {%s }\n", action, ports["udp"]
+        printf "pass out quick proto udp from any port {%s }\n", ports["udp"]
+        printf "pass in quick proto udp to any port {%s }\n", ports["udp"]
       }
-    }'
+    }' <<<"$list"
 }
 
 refresh() {   # scan the allowed apps and reload the anchor when their port set changes
   local pids rules
-  pids=$(allowed_pids)
+  allowed_pids
+  pids=$PIDS
   printf '%s\n' $pids > "$PIDFILE"      # the monitor reads it for the * marker
   rules=$(anchor_rules $pids | sort)
   [[ $rules == "$LAST_RULES" ]] && return 0
@@ -152,18 +184,7 @@ refresh() {   # scan the allowed apps and reload the anchor when their port set 
 }
 
 # -------------------------------------------------------------- ruleset
-ruleset() {
-  if [[ $MODE == block ]]; then
-    # no state: a pass state would keep a connection open after its block rule loads
-    cat <<RULES
-# netlock --block
-set skip on lo0
-anchor "$ANCHOR"
-pass out all no state
-pass in all no state
-RULES
-    return
-  fi
+ruleset() {   # both modes: everything blocked except DNS and the ports the anchor passes
   cat <<RULES
 # netlock
 set skip on lo0
@@ -209,7 +230,7 @@ cmd_status() {
   need_root
   if pfctl -s info 2>/dev/null | grep -q 'Status: Enabled'; then echo "pf: enabled"; else echo "pf: disabled"; fi
   if pfctl -s rules 2>/dev/null | grep -q "^anchor \"$ANCHOR\""; then echo "netlock rules: loaded"; else echo "netlock rules: not loaded"; fi
-  echo "ports of the listed apps, passed (--allow) or blocked (--block), anchor $ANCHOR:"
+  echo "ports passed (anchor $ANCHOR):"
   pfctl -a "$ANCHOR" -s rules 2>/dev/null | sed 's/^/  /' | grep . || echo "  (none)"
 }
 
@@ -305,13 +326,9 @@ cmd_run() {
     ruleset
     echo
     echo "# anchor \"$ANCHOR\" is rebuilt every ${POLL}s from the sockets of the listed apps, e.g.:"
-    if [[ $MODE == block ]]; then
-      echo "# block drop out quick proto tcp from any port { 51597 51612 }"
-      echo "# block drop in quick proto tcp to any port { 51597 51612 }"
-    else
-      echo "# pass out quick proto tcp from any port { 51597 51612 } flags any"
-      echo "# pass in quick proto tcp to any port { 51597 51612 } flags any"
-    fi
+    [[ $MODE == block ]] && echo "# (with --block: the sockets of every other process)"
+    echo "# pass out quick proto tcp from any port { 51597 51612 } flags any"
+    echo "# pass in quick proto tcp to any port { 51597 51612 } flags any"
     exit 0
   fi
 
@@ -347,7 +364,7 @@ cmd_run() {
     echo "netlock ACTIVE  (Ctrl+C restores the network)"
     if [[ $MODE == block ]]; then
       echo "  blocked : apps ${APPS[*]} (running or started later, children included)"
-      echo "  allowed : everything else"
+      echo "  allowed : everything else (a new connection waits about 1 s)"
     else
       echo "  blocked : all traffic in + out, every process"
       echo "  allowed : ports ${ALLOW_PORTS[*]} (tcp/udp, all processes)"
