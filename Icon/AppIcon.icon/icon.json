@@ -1,12 +1,12 @@
 {
   "fill" : {
-    "automatic-gradient" : "srgb:0.31000,0.64000,0.90000,1.00000"
+    "automatic-gradient" : "srgb:0.08000,0.08000,0.09000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
-        { "glass" : true, "image-name" : "front.svg", "name" : "front" },
-        { "glass" : false, "image-name" : "back.svg", "name" : "back" }
+        { "glass" : true, "image-name" : "front.svg", "name" : "body" },
+        { "glass" : true, "image-name" : "back.svg", "name" : "legs" }
       ],
       "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
       "translucency" : { "enabled" : false, "value" : 0 }

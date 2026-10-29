@@ -174,9 +174,11 @@ struct AntHillApp: App {
         }
 
         // The menu bar icon stays while the window is closed; Quit lives here.
-        MenuBarExtra("AntHill", systemImage: "ant.fill") {
+        MenuBarExtra {
             MenuBarContent()
                 .environment(model)
+        } label: {
+            Image(nsImage: .antHead)
         }
 
         Settings {
