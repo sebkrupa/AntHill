@@ -22,11 +22,6 @@ if [[ -z "$identity" ]]; then
 fi
 [[ -n "$identity" ]] || identity=-
 
-# shortcut: Command Line Tools 27 lack the SwiftUI macro plugin, so build against the 26 SDK; drop this once Xcode is installed.
-if [[ -z "${SDKROOT:-}" && "$(xcode-select -p)" == */CommandLineTools ]]; then
-  export SDKROOT=$(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.*.sdk 2>/dev/null | tail -1)
-fi
-
 swift build -c $config --package-path "$here" --scratch-path "$scratch" 2>&1 | grep -E "error|warning|Build complete" | grep -v "^\[" || true
 bin="$scratch/$config/$name"
 [[ -x "$bin" ]] || { echo "build failed"; exit 1; }
@@ -63,6 +58,10 @@ if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   fi
   cp -X "$here/Resources/AppIcon.icns" "$app/Contents/Resources/"
 fi
+# Network Lock runs this script as root.
+cp -X "$here/Resources/netlock" "$app/Contents/Resources/"
+# The menu bar icon, the app icon's ant as a template image.
+cp -X "$here/Resources/MenuBarIcon.svg" "$app/Contents/Resources/"
 xattr -cr "$app"
 codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
 echo "installed $app (signed: ${identity})"

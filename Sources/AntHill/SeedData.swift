@@ -132,5 +132,7 @@ enum SeedData {
            waiting: [jobs[3].id: "Studio"])
         model.network.name = "ollama"
         model.network.insertSample(connections)
+        model.netLock.insertSample(allowed: ["/Applications/Safari.app", "/System/Applications/Mail.app", "/System/Applications/Messages.app"],
+                                   blocked: ["/System/Applications/News.app", "/System/Applications/TV.app"], locked: true)
     }
 }

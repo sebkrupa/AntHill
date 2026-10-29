@@ -148,12 +148,37 @@ struct AntHillApp: App {
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(model.sidebar != .filesfer || model.transfers.selection == nil)
             }
+            CommandMenu("Network Lock") {
+                Button(model.netLock.isOn ? "Unlock Network" : "Lock Network") { model.netLock.toggle() }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(model.netLock.busy || !(model.netLock.isOn || model.netLock.canLock))
+                Button(model.netLock.mode == .allow ? "Use Block List" : "Use Allow List") {
+                    model.sidebar = .netLock
+                    model.netLock.mode = model.netLock.mode == .allow ? .block : .allow
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("Apply Changes") { model.netLock.lock() }
+                    .keyboardShortcut("l", modifiers: [.command, .option])
+                    .disabled(!model.netLock.hasChanges || model.netLock.busy)
+                Button("Add App…") {
+                    model.sidebar = .netLock
+                    model.netLock.chooseApps()
+                }
+                .keyboardShortcut("a", modifiers: [.command, .option])
+                Divider()
+                // After a crash the rules stay in pf, and Unlock finds nothing to stop.
+                Button("Restore Network…") { model.netLock.restore() }
+                    .keyboardShortcut("l", modifiers: [.command, .option, .shift])
+                    .disabled(model.netLock.busy)
+            }
         }
 
         // The menu bar icon stays while the window is closed; Quit lives here.
-        MenuBarExtra("AntHill", systemImage: "ant.fill") {
+        MenuBarExtra {
             MenuBarContent()
                 .environment(model)
+        } label: {
+            Image(nsImage: .menuBarIcon)
         }
 
         Settings {

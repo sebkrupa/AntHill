@@ -52,6 +52,14 @@ enum Snapshot {
                     model.llama.status = status
                     model.musicPage = .downloads
                 }
+                // The Network Lock block list: network-lock-block-<mode>.png.
+                if only?.contains("network-lock") ?? true {
+                    model.sidebar = .netLock
+                    model.netLock.mode = .block
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/network-lock-block-\(mode).png")
+                    model.netLock.mode = .allow
+                }
             }
             // The Log popover for every sample item that has one: log-<n>-<mode>.png.
             if only == nil || only?.contains("log") == true {

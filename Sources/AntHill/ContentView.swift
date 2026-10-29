@@ -34,6 +34,7 @@ struct ModuleView: View {
         case .shopCheck: ShopCheckView()
         case .network: NetworkView()
         case .filesfer: FilesferView()
+        case .netLock: NetworkLockView()
         }
     }
 }
