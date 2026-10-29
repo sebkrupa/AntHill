@@ -62,7 +62,7 @@ struct ModuleMenu: View {
         case .netLock:
             Text(model.netLock.status)
             Button(model.netLock.isOn ? "Unlock Network" : "Lock Network") { model.netLock.toggle() }
-                .disabled(model.netLock.busy)
+                .disabled(model.netLock.busy || !(model.netLock.isOn || model.netLock.canLock))
         }
     }
 }

@@ -151,7 +151,12 @@ struct AntHillApp: App {
             CommandMenu("Network Lock") {
                 Button(model.netLock.isOn ? "Unlock Network" : "Lock Network") { model.netLock.toggle() }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
-                    .disabled(model.netLock.busy)
+                    .disabled(model.netLock.busy || !(model.netLock.isOn || model.netLock.canLock))
+                Button(model.netLock.mode == .allow ? "Use Block List" : "Use Allow List") {
+                    model.sidebar = .netLock
+                    model.netLock.mode = model.netLock.mode == .allow ? .block : .allow
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Apply Changes") { model.netLock.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .option])
                     .disabled(!model.netLock.hasChanges || model.netLock.busy)

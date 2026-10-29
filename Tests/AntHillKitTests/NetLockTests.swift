@@ -14,6 +14,12 @@ private let script = "/Applications/AntHill.app/Contents/Resources/netlock"
     #expect(command.hasSuffix("/bin/bash '\(script)' --no-monitor --allow '/Applications/Firefox.app' --allow '/Applications/Bob'\\''s App.app' >'/tmp/l' 2>&1 </dev/null &"))
 }
 
+@Test func startWithABlockListPassesBlock() {
+    let command = NetLock.startCommand(script: script, mode: .block, apps: ["/Applications/Firefox.app"], log: "/tmp/l")
+    #expect(command.hasSuffix("--no-monitor --block '/Applications/Firefox.app' >'/tmp/l' 2>&1 </dev/null &"))
+    #expect(!command.contains("--allow"))
+}
+
 @Test func startWithoutAppsBlocksEverything() {
     #expect(NetLock.startCommand(script: script, apps: [], log: "/tmp/l").contains("--no-monitor >'/tmp/l'"))
 }

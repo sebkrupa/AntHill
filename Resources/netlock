@@ -1,9 +1,10 @@
 #!/bin/bash
-# netlock - block all network traffic on macOS except for chosen apps. Uses pf.
-# An allowed app is matched by process (any path containing /Name.app/, child
+# netlock - block all network traffic on macOS except for chosen apps (--allow),
+# or block only chosen apps (--block). Uses pf.
+# An app is matched by process (any path containing /Name.app/, child
 # processes included), so it may already be running. Every POLL seconds netlock
-# lists the sockets of those processes (lsof) and loads pass rules for their
-# local ports into the pf anchor "netlock"; everything else stays blocked.
+# lists the sockets of those processes (lsof) and loads pass rules (--allow) or
+# block rules (--block) for their local ports into the pf anchor "netlock".
 # Needs root. Restores the default pf config on exit (Ctrl+C, SIGTERM, SIGHUP).
 # After a kill -9 run: sudo netlock restore
 # While running it shows live per-process traffic (nettop) since start.
@@ -14,9 +15,10 @@ ANCHOR=netlock
 POLL=0.5                            # TCP resends a lost SYN after 1 s, so a new socket is passed before that
 CONFIG_REL=.config/netlock/allow    # per user, written by netlock-apps
 
-ALLOW_APPS=()
+MODE=allow         # allow: everything blocked except APPS; block: only APPS blocked
+APPS=()
 ALLOW_PORTS=(53)
-APP_MATCH=()        # one per allowed app: "/Name.app/" (substring of the process path) or an exact binary path
+APP_MATCH=()        # one per app: "/Name.app/" (substring of the process path) or an exact binary path
 DRY_RUN=0
 VERBOSE=0
 MONITOR=1
@@ -34,7 +36,8 @@ usage() {
   cat <<USAGE
 usage:
   sudo netlock [--allow <app>[,<app>...]] [--allow-port <port>[,...]] [--no-monitor] [--dry-run] [--verbose]
-  sudo netlock status    # pf state, netlock rules loaded?, ports currently passed
+  sudo netlock --block <app>[,<app>...] [--no-monitor] [--dry-run] [--verbose]
+  sudo netlock status    # pf state, netlock rules loaded?, ports currently passed or blocked
   sudo netlock restore   # manual restore after kill -9 / crash
 
 <app>  name from /Applications, ~/Applications or /System/Applications (Firefox, Slack),
@@ -42,6 +45,8 @@ usage:
 Allowed apps may already be running. Their child processes count as the app.
 Apps listed in ~/.config/netlock/allow (pick them with netlock-apps, no sudo) are always allowed too.
 Without --allow and with an empty list everything except DNS (port 53) is blocked.
+With --block only those apps are cut off and everything else keeps the network
+(--allow, --allow-port and ~/.config/netlock/allow don't apply).
 While running, a live table shows traffic per process since start (--no-monitor turns it off).
 USAGE
 }
@@ -57,7 +62,7 @@ load_config() {   # apps picked with netlock-apps, merged with --allow
   local f="$(user_home)/$CONFIG_REL" l
   [[ -r $f ]] || return 0
   while IFS= read -r l || [[ -n $l ]]; do
-    [[ -n $l && $l != \#* ]] && ALLOW_APPS+=("$l")
+    [[ -n $l && $l != \#* ]] && APPS+=("$l")
   done < "$f"
   vlog "config $f read"
 }
@@ -101,9 +106,11 @@ allowed_pids() {   # -> pids of every process of the allowed apps, children incl
     }'
 }
 
-anchor_rules() {   # pids... -> pf rules passing the local ports of their sockets, nothing if none
+anchor_rules() {   # pids... -> pf rules passing (or, with --block, blocking) the local ports of their sockets, nothing if none
   (( $# )) || return 0
-  lsof -a -n -P -i -p "$(IFS=,; echo "$*")" -F nP 2>/dev/null | awk '
+  local action="pass" flags=" flags any"
+  [[ $MODE == block ]] && { action="block drop"; flags=""; }
+  lsof -a -n -P -i -p "$(IFS=,; echo "$*")" -F nP 2>/dev/null | awk -v action="$action" -v flags="$flags" '
     /^P/ { proto = tolower(substr($0, 2)); next }
     /^n/ {
       local = substr($0, 2); sub(/->.*/, "", local)
@@ -114,12 +121,12 @@ anchor_rules() {   # pids... -> pf rules passing the local ports of their socket
     END {
       # flags any: a connection that exists before its rule (app already running) is picked up mid-stream
       if ("tcp" in ports) {
-        printf "pass out quick proto tcp from any port {%s } flags any\n", ports["tcp"]
-        printf "pass in quick proto tcp to any port {%s } flags any\n", ports["tcp"]
+        printf "%s out quick proto tcp from any port {%s }%s\n", action, ports["tcp"], flags
+        printf "%s in quick proto tcp to any port {%s }%s\n", action, ports["tcp"], flags
       }
       if ("udp" in ports) {
-        printf "pass out quick proto udp from any port {%s }\n", ports["udp"]
-        printf "pass in quick proto udp to any port {%s }\n", ports["udp"]
+        printf "%s out quick proto udp from any port {%s }\n", action, ports["udp"]
+        printf "%s in quick proto udp to any port {%s }\n", action, ports["udp"]
       }
     }'
 }
@@ -141,6 +148,17 @@ refresh() {   # scan the allowed apps and reload the anchor when their port set 
 
 # -------------------------------------------------------------- ruleset
 ruleset() {
+  if [[ $MODE == block ]]; then
+    # no state: a pass state would keep a connection open after its block rule loads
+    cat <<RULES
+# netlock --block
+set skip on lo0
+anchor "$ANCHOR"
+pass out all no state
+pass in all no state
+RULES
+    return
+  fi
   cat <<RULES
 # netlock
 set skip on lo0
@@ -186,7 +204,7 @@ cmd_status() {
   need_root
   if pfctl -s info 2>/dev/null | grep -q 'Status: Enabled'; then echo "pf: enabled"; else echo "pf: disabled"; fi
   if pfctl -s rules 2>/dev/null | grep -q "^anchor \"$ANCHOR\""; then echo "netlock rules: loaded"; else echo "netlock rules: not loaded"; fi
-  echo "ports passed for allowed apps (anchor $ANCHOR):"
+  echo "ports of the listed apps, passed (--allow) or blocked (--block), anchor $ANCHOR:"
   pfctl -a "$ANCHOR" -s rules 2>/dev/null | sed 's/^/  /' | grep . || echo "  (none)"
 }
 
@@ -205,7 +223,7 @@ monitor() {
   printf '\033[H\033[2J'
   script -q /dev/null nettop -P -d -L 0 -s 1 -x -J bytes_in,bytes_out -t external </dev/null 2>/dev/null |
   awk -v start="$(date +%s)" -v rows="$rows" -v cols="$cols" -v pidfile="$PIDFILE" \
-      -v allowed="${ALLOW_APPS[*]:-none}" -v ports="${ALLOW_PORTS[*]}" '
+      -v mode="$MODE" -v apps="${APPS[*]:-none}" -v ports="${ALLOW_PORTS[*]}" '
     function human(b) {
       if (b < 1024) return b " B"
       if (b < 1048576) return sprintf("%.0f KB", b / 1024)
@@ -221,8 +239,13 @@ monitor() {
       el = now - start
       printf "\033[H"
       line(sprintf("netlock  %s  (in %s, out %s)  up %02d:%02d:%02d   Ctrl+C restores network", human(tin + tout), human(tin), human(tout), el / 3600, (el % 3600) / 60, el % 60))
-      line("allowed: " allowed "   ports: " ports)
-      line("* = allowed app (has network)   no *: out = blocked retries, tiny in = DNS")
+      if (mode == "block") {
+        line("blocked: " apps)
+        line("* = blocked app (no network)")
+      } else {
+        line("allowed: " apps "   ports: " ports)
+        line("* = allowed app (has network)   no *: out = blocked retries, tiny in = DNS")
+      }
       line("")
       line(sprintf("%-17s %10s %10s %10s", "PROCESS", "IN", "OUT", "TOTAL"))
       max = 0
@@ -261,13 +284,13 @@ monitor() {
 # ------------------------------------------------------------ main mode
 cmd_run() {
   local spec m
-  load_config
-  if (( ${#ALLOW_APPS[@]} )); then
+  [[ $MODE == allow ]] && load_config
+  if (( ${#APPS[@]} )); then
     local -a uniq=()
-    while IFS= read -r spec; do uniq+=("$spec"); done < <(printf '%s\n' "${ALLOW_APPS[@]}" | awk '!seen[$0]++')
-    ALLOW_APPS=("${uniq[@]}")
+    while IFS= read -r spec; do uniq+=("$spec"); done < <(printf '%s\n' "${APPS[@]}" | awk '!seen[$0]++')
+    APPS=("${uniq[@]}")
   fi
-  for spec in "${ALLOW_APPS[@]}"; do
+  for spec in "${APPS[@]}"; do
     m=$(resolve_app "$spec") || die "cannot find app: $spec"
     vlog "$spec -> $m"
     APP_MATCH+=("$m")
@@ -276,9 +299,14 @@ cmd_run() {
   if (( DRY_RUN )); then
     ruleset
     echo
-    echo "# anchor \"$ANCHOR\" is rebuilt every ${POLL}s from the sockets of the allowed apps, e.g.:"
-    echo "# pass out quick proto tcp from any port { 51597 51612 } flags any"
-    echo "# pass in quick proto tcp to any port { 51597 51612 } flags any"
+    echo "# anchor \"$ANCHOR\" is rebuilt every ${POLL}s from the sockets of the listed apps, e.g.:"
+    if [[ $MODE == block ]]; then
+      echo "# block drop out quick proto tcp from any port { 51597 51612 }"
+      echo "# block drop in quick proto tcp to any port { 51597 51612 }"
+    else
+      echo "# pass out quick proto tcp from any port { 51597 51612 } flags any"
+      echo "# pass in quick proto tcp to any port { 51597 51612 } flags any"
+    fi
     exit 0
   fi
 
@@ -312,9 +340,14 @@ cmd_run() {
   else
     echo
     echo "netlock ACTIVE  (Ctrl+C restores the network)"
-    echo "  blocked : all traffic in + out, every process"
-    echo "  allowed : ports ${ALLOW_PORTS[*]} (tcp/udp, all processes)"
-    echo "  allowed : apps ${ALLOW_APPS[*]:-none} (running or started later, children included)"
+    if [[ $MODE == block ]]; then
+      echo "  blocked : apps ${APPS[*]} (running or started later, children included)"
+      echo "  allowed : everything else"
+    else
+      echo "  blocked : all traffic in + out, every process"
+      echo "  allowed : ports ${ALLOW_PORTS[*]} (tcp/udp, all processes)"
+      echo "  allowed : apps ${APPS[*]:-none} (running or started later, children included)"
+    fi
     echo "  after a crash: sudo netlock restore"
     echo
   fi
@@ -339,7 +372,14 @@ case ${1:-} in
         --allow)
           [[ -n ${2:-} ]] || die "--allow needs a value"
           IFS=, read -ra parts <<<"$2"
-          ALLOW_APPS+=("${parts[@]}")
+          APPS+=("${parts[@]}")
+          ALLOW_GIVEN=1
+          shift 2 ;;
+        --block)
+          [[ -n ${2:-} ]] || die "--block needs a value"
+          IFS=, read -ra parts <<<"$2"
+          APPS+=("${parts[@]}")
+          MODE=block
           shift 2 ;;
         --allow-port)
           [[ -n ${2:-} ]] || die "--allow-port needs a value"
@@ -355,5 +395,6 @@ case ${1:-} in
         *)            usage >&2; die "unknown argument: $1" ;;
       esac
     done
+    [[ $MODE == block && -n ${ALLOW_GIVEN:-} ]] && die "use --allow or --block, not both"
     cmd_run ;;
 esac

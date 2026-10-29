@@ -1,6 +1,8 @@
 import SwiftUI
+import AntHillKit
 
-/// Network Lock: the apps that keep the network, and one button that blocks everything else.
+/// Network Lock: an allow list (only these apps keep the network) and a block list (only these
+/// apps lose it), a picker for which one the lock uses, and one button that locks.
 struct NetworkLockView: View {
     @Environment(AppModel.self) private var model
     @State private var selection = Set<String>()
@@ -8,6 +10,7 @@ struct NetworkLockView: View {
     private var lock: NetworkLock { model.netLock }
 
     var body: some View {
+        @Bindable var lock = lock
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(spacing: Space.sm) {
@@ -27,10 +30,20 @@ struct NetworkLockView: View {
                     } else {
                         Button("Lock Network", systemImage: "lock.fill") { lock.lock() }
                             .buttonStyle(.borderedProminent)
-                            .disabled(lock.busy)
+                            .disabled(lock.busy || !lock.canLock)
                     }
                 }
-                Text("While locked, only the apps below have network, with the apps they start. Everything else is blocked, system services included; only DNS lookups pass. The lock stays on after AntHill quits, until you unlock or restart the Mac.")
+                Picker("List", selection: $lock.mode) {
+                    Text("Allow List").tag(NetLock.Mode.allow)
+                    Text("Block List").tag(NetLock.Mode.block)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .onChange(of: lock.mode) { selection = [] }
+                Text(lock.mode == .allow
+                     ? "While locked, only the apps below have network, with the apps they start. Everything else is blocked, system services included; only DNS lookups pass. The lock stays on after AntHill quits, until you unlock or restart the Mac."
+                     : "While locked, only the apps below lose the network, with the apps they start. Everything else keeps it. The lock stays on after AntHill quits, until you unlock or restart the Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if let error = lock.error {
@@ -57,8 +70,13 @@ struct NetworkLockView: View {
             .onDeleteCommand { lock.remove(selection) }
             .overlay {
                 if lock.apps.isEmpty {
-                    ContentUnavailableView("No Allowed Apps", systemImage: Module.netLock.symbol,
-                                           description: Text("Locking now blocks every app. Add the apps that should keep the network."))
+                    if lock.mode == .allow {
+                        ContentUnavailableView("No Allowed Apps", systemImage: Module.netLock.symbol,
+                                               description: Text("Locking now blocks every app. Add the apps that should keep the network."))
+                    } else {
+                        ContentUnavailableView("No Blocked Apps", systemImage: Module.netLock.symbol,
+                                               description: Text("Add the apps that should lose the network, then lock."))
+                    }
                 }
             }
         }

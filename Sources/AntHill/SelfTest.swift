@@ -170,29 +170,43 @@ enum SelfTest {
         }
     }
 
-    /// The allowed apps, and the bundled netlock script in dry-run mode (no root, pf untouched).
+    /// The allow and block lists, and the bundled netlock script in dry-run mode (no root, pf untouched).
     private static func netLock(_ lock: NetworkLock) {
-        let old = lock.apps
-        lock.apps = []
+        let old = (lock.mode, lock.allowed, lock.blocked)
+        lock.mode = .allow
+        lock.allowed = []
+        lock.blocked = []
         lock.add([URL(filePath: "/System/Applications/Calculator.app"), URL(filePath: "/usr/bin/curl"), URL(filePath: "/System/Applications/Calculator.app")])
         check("an app is allowed once, a file that is no app is refused",
-              lock.apps == ["/System/Applications/Calculator.app"] && lock.error != nil)
-        check("the allowed apps are saved", NetworkLock(defaults: AppModel.defaults).apps == lock.apps)
+              lock.allowed == ["/System/Applications/Calculator.app"] && lock.error != nil)
+        check("an empty allow list can lock, an empty block list can't", lock.canLock && { lock.mode = .block; return !lock.canLock }())
+        lock.add([URL(filePath: "/System/Applications/Mail.app")])
+        check("the block list is its own list", lock.blocked == ["/System/Applications/Mail.app"] && lock.allowed == ["/System/Applications/Calculator.app"])
+        let saved = NetworkLock(defaults: AppModel.defaults)
+        check("the mode and both lists are saved", saved.mode == .block && saved.allowed == lock.allowed && saved.blocked == lock.blocked)
         lock.remove(Set(lock.apps))
-        check("removing an app takes it off the list", lock.apps.isEmpty)
-        lock.apps = old
+        check("removing an app takes it off the list", lock.blocked.isEmpty && !lock.allowed.isEmpty)
+        (lock.mode, lock.allowed, lock.blocked) = old
         guard let script = NetworkLock.script else { return check("AntHill.app has the netlock script", false) }
+        let allow = dryRun(script, "--allow")
+        check("netlock blocks everything in and out except the allowed apps' ports",
+              allow.contains("block drop out all") && allow.contains("block drop in all") && allow.contains("anchor \"netlock\""), allow)
+        let block = dryRun(script, "--block")
+        check("netlock with a block list passes everything except the blocked apps' ports",
+              block.contains("pass out all no state") && !block.contains("block drop out all") && block.contains("anchor \"netlock\""), block)
+    }
+
+    private static func dryRun(_ script: String, _ flag: String) -> String {
         let process = Process()
         process.executableURL = URL(filePath: "/bin/bash")
-        process.arguments = [script, "--dry-run", "--allow", "/System/Applications/Calculator.app"]
+        process.arguments = [script, "--dry-run", flag, "/System/Applications/Calculator.app"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         try? process.run()
         let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
-        check("netlock blocks everything in and out except the allowed apps' ports",
-              output.contains("block drop out all") && output.contains("block drop in all") && output.contains("anchor \"netlock\""), output)
+        return output
     }
 
     /// Real rsync, zip, and ditto runs on folders in /tmp.

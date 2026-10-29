@@ -1,11 +1,20 @@
 import Foundation
 
 /// Shell commands for the Network Lock module. The lock itself is the netlock
-/// script from the MacNetLock repo, bundled as Resources/netlock: pf blocks all
-/// traffic in and out, and every 0.5 s the script opens the local ports of the
-/// allowed apps' sockets. It runs as root, so the app starts and stops it with
-/// one administrator prompt each.
+/// script from the MacNetLock repo, bundled as Resources/netlock. With an allow
+/// list pf blocks all traffic in and out, and every 0.5 s the script opens the
+/// local ports of the listed apps' sockets; with a block list everything passes
+/// and the script closes those ports instead. It runs as root, so the app starts
+/// and stops it with one administrator prompt each.
 public enum NetLock {
+    /// Which apps the lock cuts off.
+    public enum Mode: String, CaseIterable, Sendable {
+        /// Everything is blocked except the listed apps.
+        case allow
+        /// Only the listed apps are blocked.
+        case block
+    }
+
     /// One argument for /bin/sh, in single quotes.
     public static func quote(_ text: String) -> String {
         "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -28,10 +37,10 @@ public enum NetLock {
     }
 
     /// Stops a running lock, then starts it again in the background with these apps.
-    /// No apps: everything except DNS is blocked. Output goes to `log`.
-    public static func startCommand(script: String, apps: [String], log: String) -> String {
-        let allow = apps.map { "--allow \(quote($0))" }.joined(separator: " ")
-        let run = ["/bin/bash", quote(script), "--no-monitor", allow].filter { !$0.isEmpty }.joined(separator: " ")
+    /// Allow mode without apps: everything except DNS is blocked. Output goes to `log`.
+    public static func startCommand(script: String, mode: Mode = .allow, apps: [String], log: String) -> String {
+        let list = apps.map { "--\(mode.rawValue) \(quote($0))" }.joined(separator: " ")
+        let run = ["/bin/bash", quote(script), "--no-monitor", list].filter { !$0.isEmpty }.joined(separator: " ")
         return "\(stopCommand(script: script)); \(run) >\(quote(log)) 2>&1 </dev/null &"
     }
 
@@ -46,7 +55,7 @@ public enum NetLock {
         return "do shell script \"\(escaped)\" with administrator privileges"
     }
 
-    /// netlock splits --allow at commas, so an app path with one can't be passed.
+    /// netlock splits --allow and --block at commas, so an app path with one can't be passed.
     public static func canAllow(_ path: String) -> Bool {
         path.hasSuffix(".app") && !path.contains(",")
     }
