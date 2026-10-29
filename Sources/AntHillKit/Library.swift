@@ -40,21 +40,22 @@ public enum Library {
                 Answer only JSON: {"remove": ["<id>", ...]}. Answer {"remove": []} when nothing is a duplicate.
                 """
             case .correctNames: """
-                You fix the tags of one song in an Apple Music library. Many songs come from YouTube video titles.
+                You fix the tags of songs in an Apple Music library. Many songs come from YouTube video titles.
+                The user sends a JSON list of songs, each with an id.
                 name: the song title only. Remove video words like (Official Video), (Official Audio), [HD], (Lyrics), (Visualizer), and "Remastered 2004".
                 Keep words that name a different version: Live, Remix, Acoustic, Edit, feat.
                 artist: the performing artist. When the name is "Artist - Title", move the artist out of the name.
                 When the artist is empty or "Unknown Artist", find it from the name; when you can't tell, keep it.
                 album: the album the song first came out on, only when you are sure. Otherwise keep the current album.
-                Never guess. When a tag is already right, return it unchanged.
-                Answer only JSON: {"name": "...", "artist": "...", "album": "..."}.
+                Never guess. Leave out the songs whose tags are already right.
+                Answer only JSON: {"songs": [{"id": 1, "name": "...", "artist": "...", "album": "..."}]}. Answer {"songs": []} when every song is right.
                 """
             case .organizeUnknown: """
-                You fix one song in an Apple Music library that has no artist.
+                You fix songs in an Apple Music library that have no artist. The user sends a JSON list of songs, each with an id.
                 Find the artist from the name, for example "Artist - Title". Then name is the title only, without the artist.
                 Fill album only when you are sure which album the song first came out on. Otherwise keep the current album.
-                When you can't tell the artist, return the song unchanged with artist "".
-                Answer only JSON: {"name": "...", "artist": "...", "album": "..."}.
+                Leave out the songs whose artist you can't tell.
+                Answer only JSON: {"songs": [{"id": 1, "name": "...", "artist": "...", "album": "..."}]}. Answer {"songs": []} when you can't tell any.
                 """
             }
         }
@@ -97,12 +98,16 @@ public enum Library {
     }
 
     /// The questions for all checked tasks, asked in one run. Correct Names also finds missing artists,
-    /// so with it checked Organize Unknown adds no questions: one question per song at most.
+    /// so with it checked Organize Unknown adds no questions: every song is asked about once at most.
     public static func questions(_ tasks: Set<Task>, for tracks: [Track]) -> [Question] {
         let perSong: Task? = tasks.contains(.correctNames) ? .correctNames : tasks.contains(.organizeUnknown) ? .organizeUnknown : nil
         return (tasks.contains(.removeDuplicates) ? questions(.removeDuplicates, for: tracks) : [])
             + (perSong.map { questions($0, for: tracks) } ?? [])
     }
+
+    /// Songs per Correct Names or Organize Unknown question. One question per song spent most of a run
+    /// on the repeated instructions and on answers that said nothing changed.
+    public static let batchSize = 20
 
     /// The questions a task asks about `tracks`. Every track the task applies to is checked.
     public static func questions(_ task: Task, for tracks: [Track]) -> [Question] {
@@ -115,9 +120,13 @@ public enum Library {
                 }))
             }
         case .correctNames, .organizeUnknown:
-            return tracks.filter { task == .correctNames || isUnknown($0.artist) }.map { track in
-                Question(task: task, tracks: [track], system: task.system,
-                         user: json(["name": track.name, "artist": track.artist, "album": track.album]))
+            let asked = tracks.filter { task == .correctNames || isUnknown($0.artist) }
+            // Short ids 1, 2, 3 instead of persistent IDs: fewer tokens, and a small model copies them right.
+            return stride(from: 0, to: asked.count, by: batchSize).map { start in
+                let batch = Array(asked[start..<min(start + batchSize, asked.count)])
+                return Question(task: task, tracks: batch, system: task.system, user: json(batch.enumerated().map {
+                    ["id": $0.offset + 1, "name": $0.element.name, "artist": $0.element.artist, "album": $0.element.album]
+                }))
             }
         }
     }
@@ -134,14 +143,20 @@ public enum Library {
             guard let kept = question.tracks.first(where: { !remove.contains($0.id) }) else { return [] }
             return question.tracks.filter { remove.contains($0.id) }.map { Change(track: $0, kind: .trash(keeping: kept)) }
         case .correctNames, .organizeUnknown:
-            guard let track = question.tracks.first else { return [] }
-            func value(_ key: String, _ current: String) -> String {
-                let text = (object[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return text.isEmpty ? current : text
+            var seen: Set<Int> = []
+            return (object["songs"] as? [[String: Any]] ?? []).compactMap { song in
+                // Models write the id as 3 or "3"; an id outside the batch or seen twice is ignored.
+                guard let id = (song["id"] as? Int) ?? Int(song["id"] as? String ?? ""),
+                      question.tracks.indices.contains(id - 1), seen.insert(id).inserted else { return nil }
+                let track = question.tracks[id - 1]
+                func value(_ key: String, _ current: String) -> String {
+                    let text = (song[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    return text.isEmpty ? current : text
+                }
+                let name = value("name", track.name), artist = value("artist", track.artist), album = value("album", track.album)
+                guard (name, artist, album) != (track.name, track.artist, track.album) else { return nil }
+                return Change(track: track, kind: .edit(name: name, artist: artist, album: album))
             }
-            let name = value("name", track.name), artist = value("artist", track.artist), album = value("album", track.album)
-            guard (name, artist, album) != (track.name, track.artist, track.album) else { return [] }
-            return [Change(track: track, kind: .edit(name: name, artist: artist, album: album))]
         }
     }
 

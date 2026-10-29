@@ -37,24 +37,33 @@ private let other = Library.Track(id: "C", name: "Dreams", artist: "Fleetwood Ma
 }
 
 @Test func correctNamesProposesOnlyRealEdits() throws {
-    let question = try #require(Library.questions(.correctNames, for: [daftVideo]).first)
-    let reply = "```json\n{\"name\": \"One More Time\", \"artist\": \"Daft Punk\", \"album\": \"\"}\n```"
+    let question = try #require(Library.questions(.correctNames, for: [daft, daftVideo]).first)
+    #expect(question.tracks == [daft, daftVideo])
+    #expect(question.user.contains(#""id":2"#) && !question.user.contains(#""B""#))
+    let reply = "```json\n{\"songs\": [{\"id\": \"2\", \"name\": \"One More Time\", \"artist\": \"Daft Punk\", \"album\": \"\"}]}\n```"
     #expect(Library.changes(question: question, reply: reply)
         == [.init(track: daftVideo, kind: .edit(name: "One More Time", artist: "Daft Punk", album: ""))])
-    let same = #"{"name": "Daft Punk - One More Time (Official Video)", "artist": "", "album": ""}"#
+    let same = #"{"songs": [{"id": 1, "name": "One More Time", "artist": "Daft Punk", "album": "Discovery"}, {"id": 9, "name": "X"}]}"#
     #expect(Library.changes(question: question, reply: same).isEmpty)
+    #expect(Library.changes(question: question, reply: #"{"songs": []}"#).isEmpty)
+}
+
+@Test func perSongTasksAskInBatches() {
+    let many = (1...45).map { Library.Track(id: "\($0)", name: "Song \($0)", artist: "A", album: "", duration: 1) }
+    #expect(Library.questions(.correctNames, for: many).map(\.tracks.count) == [20, 20, 5])
 }
 
 @Test func organizeUnknownAsksOnlyAboutTracksWithoutArtist() {
     let unknown = Library.Track(id: "D", name: "Teardrop", artist: "Unknown Artist", album: "", duration: 330)
-    #expect(Library.questions(.organizeUnknown, for: [daft, daftVideo, unknown]).map { $0.tracks[0].id } == ["B", "D"])
-    #expect(Library.questions(.correctNames, for: [daft, daftVideo, unknown]).count == 3)
+    #expect(Library.questions(.organizeUnknown, for: [daft, daftVideo, unknown]).map { $0.tracks.map(\.id) } == [["B", "D"]])
+    #expect(Library.questions(.correctNames, for: [daft, daftVideo, unknown]).map(\.tracks.count) == [3])
 }
 
 @Test func allTasksAskOnceAboutEverySong() {
     let all = Library.questions(Set(Library.Task.allCases), for: [daft, daftVideo, other])
-    #expect(all.map(\.task) == [.removeDuplicates, .correctNames, .correctNames, .correctNames])
-    #expect(Library.questions([.organizeUnknown], for: [daft, daftVideo, other]).map { $0.tracks[0].id } == ["B"])
+    #expect(all.map(\.task) == [.removeDuplicates, .correctNames])
+    #expect(all[1].tracks == [daft, daftVideo, other])
+    #expect(Library.questions([.organizeUnknown], for: [daft, daftVideo, other]).map { $0.tracks.map(\.id) } == [["B"]])
     #expect(Library.questions([], for: [daft]).isEmpty)
 }
 

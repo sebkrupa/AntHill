@@ -142,8 +142,11 @@ final class MusicLibrary {
                         set album of theTrack to \(Library.appleScript(album))
                         """)
                 case .trash:
-                    let path = try Self.music("POSIX path of (location of \(track))").stringValue ?? ""
-                    try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
+                    // "POSIX path of" inside the tell block goes to Music, which fails; Swift reads the file reference.
+                    // A track whose file is already gone has no location: only the track is deleted.
+                    if let file = try Self.music("get location of \(track)").fileURLValue {
+                        try FileManager.default.trashItem(at: file, resultingItemURL: nil)
+                    }
                     try Self.music("delete \(track)")
                 }
                 done[change.id, default: []].append(change.log)
@@ -156,7 +159,10 @@ final class MusicLibrary {
         for (id, logs) in done { notes[id] = Note(cleaned: true, log: logs.joined(separator: "; ")) }
         self.changes = nil
         load()
-        if !failed.isEmpty { error = "Some changes failed. " + failed.joined(separator: "; ") }
+        // The Log column has each reason; the banner names only the first.
+        if let first = failed.first {
+            error = failed.count == 1 ? "A change failed. \(first)" : "\(failed.count) changes failed; the Log column says why. First: \(first)"
+        }
     }
 
     /// Closes the review sheet without changing Music.
