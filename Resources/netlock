@@ -113,12 +113,17 @@ anchor_rules() {   # pids... -> pf rules passing (or, with --block, blocking) th
   lsof -a -n -P -i -p "$(IFS=,; echo "$*")" -F nP 2>/dev/null | awk -v action="$action" -v flags="$flags" '
     /^P/ { proto = tolower(substr($0, 2)); next }
     /^n/ {
+      if (proto ~ /^icmp/) { icmp[proto] = 1; next }   # ping: an ICMP socket has no port
       local = substr($0, 2); sub(/->.*/, "", local)
       port = local; sub(/.*:/, "", port)
       if (port !~ /^[0-9]+$/ || (proto != "tcp" && proto != "udp") || ((proto, port) in seen)) next
       seen[proto, port] = 1; ports[proto] = ports[proto] " " port
     }
     END {
+      # shortcut: pf cannot tell whose ICMP echo it is, so while a listed app has an ICMP socket
+      # every process is passed (--allow) or blocked (--block) for ping; upgrade with a Network Extension filter.
+      if ("icmp" in icmp) printf "%s out quick inet proto icmp icmp-type echoreq\n", action
+      if ("icmpv6" in icmp) printf "%s out quick inet6 proto icmp6 icmp6-type echoreq\n", action
       # flags any: a connection that exists before its rule (app already running) is picked up mid-stream
       if ("tcp" in ports) {
         printf "%s out quick proto tcp from any port {%s }%s\n", action, ports["tcp"], flags

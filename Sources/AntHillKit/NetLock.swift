@@ -38,9 +38,13 @@ public enum NetLock {
 
     /// Stops a running lock, then starts it again in the background with these apps.
     /// Allow mode without apps: everything except DNS is blocked. Output goes to `log`.
+    /// The administrator prompt starts the shell with SIGTERM ignored and blocked, and bash can't trap
+    /// a signal ignored at start, so perl sets TERM, HUP, and INT back to default and unblocks them
+    /// before it runs the script.
     public static func startCommand(script: String, mode: Mode = .allow, apps: [String], log: String) -> String {
         let list = apps.map { "--\(mode.rawValue) \(quote($0))" }.joined(separator: " ")
-        let run = ["/bin/bash", quote(script), "--no-monitor", list].filter { !$0.isEmpty }.joined(separator: " ")
+        let resetSignals = #"/usr/bin/perl -MPOSIX -e '$SIG{$_} = "DEFAULT" for qw(TERM HUP INT); sigprocmask(SIG_UNBLOCK, POSIX::SigSet->new(SIGTERM, SIGHUP, SIGINT)); exec @ARGV'"#
+        let run = [resetSignals, "/bin/bash", quote(script), "--no-monitor", list].filter { !$0.isEmpty }.joined(separator: " ")
         return "\(stopCommand(script: script)); \(run) >\(quote(log)) 2>&1 </dev/null &"
     }
 

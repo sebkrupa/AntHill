@@ -61,6 +61,36 @@ private let script = "/Applications/AntHill.app/Contents/Resources/netlock"
     #expect(FileManager.default.fileExists(atPath: fake + ".restored"))
 }
 
+@Test func aLockStartedWithTermIgnoredStillStopsOnTerm() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let fake = dir.appending(path: "netlock").path
+    try """
+    [ "$1" = restore ] && { touch "$0.restored"; exit 0; }
+    trap 'touch "$0.stopped"; exit 143' TERM
+    while :; do sleep 0.2 & wait $!; done
+    """.write(toFile: fake, atomically: true, encoding: .utf8)
+    // Like the administrator prompt: the shell that starts the lock has SIGTERM ignored and blocked.
+    let start = Process()
+    start.executableURL = URL(filePath: "/usr/bin/perl")
+    start.arguments = ["-MPOSIX", "-e", #"sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGTERM)); $SIG{TERM} = "IGNORE"; exec "/bin/sh", "-c", $ARGV[0]"#,
+                       NetLock.startCommand(script: fake, mode: .block, apps: ["/Applications/A.app"], log: "/dev/null")]
+    try start.run()
+    start.waitUntilExit()
+    Thread.sleep(forTimeInterval: 0.5)
+
+    let stop = Process()
+    stop.executableURL = URL(filePath: "/bin/sh")
+    stop.arguments = ["-c", NetLock.stopCommand(script: fake)]
+    let began = Date.now
+    try stop.run()
+    stop.waitUntilExit()
+    #expect(Date.now.timeIntervalSince(began) < 3)
+    #expect(FileManager.default.fileExists(atPath: fake + ".stopped"))
+    #expect(!FileManager.default.fileExists(atPath: fake + ".restored"))
+}
+
 @Test func appleScriptEscapesQuotesAndBackslashes() {
     #expect(NetLock.appleScript(#"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#)
 }
