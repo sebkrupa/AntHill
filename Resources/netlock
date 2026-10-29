@@ -34,6 +34,7 @@ MON_PID=""
 PIDFILE=""
 LAST_RULES=""
 PIDS=""
+SOCKETS=""          # --block: every process's sockets, read before the process list
 RESPONSIBLE=""      # "pid responsible-pid" per XPC service seen; launchctl procinfo is slow and the answer never changes
 
 usage() {
@@ -133,8 +134,7 @@ allowed_pids() {   # -> PIDS: every process of the listed apps, children and the
 anchor_rules() {   # pids... -> pf rules passing the local ports of their sockets (--allow), or of every other process's sockets (--block)
   local list
   if [[ $MODE == block ]]; then
-    # Strict: a new socket stays blocked until it is seen, so the blocked app never gets a packet out first.
-    list=$(lsof -n -P -i -F pPn 2>/dev/null)
+    list=$SOCKETS
   else
     (( $# )) || return 0
     list=$(lsof -a -n -P -i -p "$(IFS=,; echo "$*")" -F pPn 2>/dev/null)
@@ -144,13 +144,26 @@ anchor_rules() {   # pids... -> pf rules passing the local ports of their socket
     /^P/ { proto = tolower(substr($0, 2)); next }
     /^n/ {
       if (proto ~ /^icmp/) { if (mine) icmp[proto] = 1; else noicmp[proto] = 1; next }   # ping: an ICMP socket has no port
-      local = substr($0, 2); sub(/->.*/, "", local)
+      local = substr($0, 2); remote = ""
+      if (local ~ /->/) { remote = local; sub(/.*->/, "", remote); sub(/->.*/, "", local) }
       port = local; sub(/.*:/, "", port)
       if (port !~ /^[0-9]+$/ || (proto != "tcp" && proto != "udp")) next
-      if (mine) pass[proto, port] = 1; else stop[proto, port] = 1   # a port the blocked app shares stays blocked
+      if (!mine) { stop[proto, port] = 1; next }   # a port the blocked app shares stays blocked
+      # A connected socket is passed with its far end too, so a port another app reuses before the
+      # next refresh does not pass. Link-local (lsof embeds the scope) and IPv4-mapped addresses fall back to the port alone.
+      raddr = remote; rport = remote; sub(/:[^:]*$/, "", raddr); sub(/.*:/, "", rport); gsub(/[][]/, "", raddr)
+      if (rport ~ /^[0-9]+$/ && raddr !~ /^[fF][eE]80/ && (raddr ~ /^[0-9.]+$/ || raddr ~ /^[0-9a-fA-F:]+$/)) conn[proto, port, raddr, rport] = 1
+      else pass[proto, port] = 1
     }
     END {
       for (k in pass) if (!(k in stop)) { split(k, f, SUBSEP); ports[f[1]] = ports[f[1]] " " f[2] }
+      for (k in conn) {
+        split(k, f, SUBSEP)
+        if (((f[1], f[2]) in stop) || ((f[1], f[2]) in pass)) continue
+        flags = f[1] == "tcp" ? " flags any" : ""
+        printf "pass out quick proto %s from any port %s to %s port %s%s\n", f[1], f[2], f[3], f[4], flags
+        printf "pass in quick proto %s from %s port %s to any port %s%s\n", f[1], f[3], f[4], f[2], flags
+      }
       # shortcut: pf cannot tell whose ICMP echo it is, so ping passes for every process while a passed
       # process has an ICMP socket and the blocked app has none; upgrade with a Network Extension filter.
       if (("icmp" in icmp) && !("icmp" in noicmp)) print "pass out quick inet proto icmp icmp-type echoreq"
@@ -169,6 +182,9 @@ anchor_rules() {   # pids... -> pf rules passing the local ports of their socket
 
 refresh() {   # scan the allowed apps and reload the anchor when their port set changes
   local pids rules
+  # --block: sockets first, then processes, so a socket's owner is always in the process list.
+  # The other way round, an app process started in between would count as another app for one round.
+  [[ $MODE == block ]] && SOCKETS=$(lsof -n -P -i -F pPn 2>/dev/null)
   allowed_pids
   pids=$PIDS
   printf '%s\n' $pids > "$PIDFILE"      # the monitor reads it for the * marker
