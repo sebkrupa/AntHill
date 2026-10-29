@@ -60,6 +60,8 @@ if [[ -d "$here/Icon/AppIcon.icon" ]]; then
 fi
 # Network Lock runs this script as root.
 cp -X "$here/Resources/netlock" "$app/Contents/Resources/"
+# The menu bar icon, the app icon's ant as a template image.
+cp -X "$here/Resources/MenuBarIcon.svg" "$app/Contents/Resources/"
 xattr -cr "$app"
 codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
 echo "installed $app (signed: ${identity})"

@@ -178,7 +178,7 @@ struct AntHillApp: App {
             MenuBarContent()
                 .environment(model)
         } label: {
-            Image(nsImage: .antHead)
+            Image(nsImage: .menuBarIcon)
         }
 
         Settings {
